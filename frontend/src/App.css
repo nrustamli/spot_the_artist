@@ -1,0 +1,244 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-light);
+}
+
+.main-content {
+  flex: 1;
+  padding: 1rem;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Mode Selection */
+.input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.mode-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.mode-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  width: 140px;
+  height: 140px;
+  box-shadow: var(--shadow-light);
+}
+
+.mode-button:hover {
+  border-color: var(--accent-red);
+  box-shadow: var(--shadow-medium);
+}
+
+.mode-button:active {
+  transform: scale(0.98);
+}
+
+.mode-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Icon styling - will be replaced with SVG icons */
+.mode-icon svg {
+  width: 100%;
+  height: 100%;
+  stroke: var(--text-primary);
+  stroke-width: 8;
+  fill: none;
+}
+
+.mode-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.mode-description {
+  display: none;
+}
+
+/* Tagline texts */
+.tagline-section {
+  text-align: center;
+  padding: 0.5rem 0 1rem;
+}
+
+.hint-text {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin: 0;
+  padding: 0 1rem;
+  line-height: 1.5;
+}
+
+.hint-subtext {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0;
+  font-weight: 500;
+}
+
+/* Capture & Upload Sections */
+.capture-section,
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.back-button {
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.back-button:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+/* Error State */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 3rem 2rem;
+  background: var(--bg-card);
+  border-radius: 16px;
+  text-align: center;
+  border: 1px solid var(--border-color);
+}
+
+.error-icon {
+  font-size: 3rem;
+}
+
+.error-text {
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 280px;
+}
+
+.retry-button {
+  padding: 0.75rem 2rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent-red);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.retry-button:hover {
+  opacity: 0.9;
+}
+
+/* Save Actions */
+.result-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.save-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.save-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent-red);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.save-button:hover {
+  opacity: 0.9;
+}
+
+.discard-button {
+  padding: 1rem 1.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.discard-button:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* Footer */
+.footer {
+  display: none;
+}
+
+/* Responsive */
+@media (max-width: 380px) {
+  .mode-buttons {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .mode-button {
+    width: 100%;
+    max-width: 200px;
+    flex-direction: row;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+}

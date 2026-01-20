@@ -1,0 +1,64 @@
+.header {
+  text-align: center;
+  padding: 1rem 1rem 0;
+  position: relative;
+}
+
+.header-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 0.5rem;
+}
+
+.header-title {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.header-right {
+  flex-shrink: 0;
+}
+
+/* Logo Section */
+.logo-section {
+  padding: 1.5rem 0;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.logo-lips {
+  width: 120px;
+  height: auto;
+  transform: rotate(-30deg);
+}
+
+.logo-text-image {
+  height: 200px;
+  width: auto;
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .logo-lips {
+    width: 90px;
+  }
+  
+  .logo-text-image {
+    height: 70px;
+  }
+  
+  .header-title {
+    font-size: 0.8rem;
+  }
+}

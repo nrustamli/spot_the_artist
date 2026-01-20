@@ -1,0 +1,213 @@
+"""
+Authentication utilities for Spot the Artist.
+Simple token-based auth with bcrypt password hashing.
+"""
+
+import os
+import hashlib
+import secrets
+from datetime import datetime, timedelta
+from typing import Optional
+from functools import lru_cache
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from .database import get_db, User
+
+# Simple token storage (in production, use Redis or JWT)
+# Format: {token: {"user_id": id, "expires": datetime}}
+active_tokens: dict = {}
+
+# Security
+security = HTTPBearer(auto_error=False)
+
+# Token expiration (7 days)
+TOKEN_EXPIRATION_DAYS = 7
+
+
+# Pydantic models for requests/responses
+class UserCreate(BaseModel):
+    """Request model for user registration."""
+    username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_]+$")
+    password: str = Field(..., min_length=6, max_length=100)
+    display_name: Optional[str] = Field(None, max_length=100)
+
+
+class UserLogin(BaseModel):
+    """Request model for user login."""
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    """Response model for user data."""
+    id: int
+    username: str
+    display_name: Optional[str]
+    arts_spotted: int
+    verified_spots: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TokenResponse(BaseModel):
+    """Response model for authentication token."""
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class LeaderboardEntry(BaseModel):
+    """Entry in the leaderboard."""
+    rank: int
+    username: str
+    display_name: Optional[str]
+    arts_spotted: int
+    verified_spots: int
+
+
+def hash_password(password: str) -> str:
+    """Hash a password using SHA-256 with salt."""
+    # In production, use bcrypt - keeping it simple here without extra dependencies
+    salt = os.environ.get("PASSWORD_SALT", "spot_the_artist_2024")
+    return hashlib.sha256(f"{password}{salt}".encode()).hexdigest()
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash."""
+    return hash_password(plain_password) == hashed_password
+
+
+def create_token(user_id: int) -> str:
+    """Create a new authentication token for a user."""
+    token = secrets.token_urlsafe(32)
+    active_tokens[token] = {
+        "user_id": user_id,
+        "expires": datetime.utcnow() + timedelta(days=TOKEN_EXPIRATION_DAYS)
+    }
+    return token
+
+
+def verify_token(token: str) -> Optional[int]:
+    """Verify a token and return the user_id if valid."""
+    if token not in active_tokens:
+        return None
+    
+    token_data = active_tokens[token]
+    if datetime.utcnow() > token_data["expires"]:
+        del active_tokens[token]
+        return None
+    
+    return token_data["user_id"]
+
+
+def revoke_token(token: str) -> bool:
+    """Revoke/invalidate a token."""
+    if token in active_tokens:
+        del active_tokens[token]
+        return True
+    return False
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """FastAPI dependency to get the current authenticated user."""
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user_id = verify_token(credentials.credentials)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """FastAPI dependency to optionally get the current user (doesn't require auth)."""
+    if credentials is None:
+        return None
+    
+    user_id = verify_token(credentials.credentials)
+    if user_id is None:
+        return None
+    
+    return db.query(User).filter(User.id == user_id).first()
+
+
+# Auth service functions
+def register_user(db: Session, user_data: UserCreate) -> User:
+    """Register a new user."""
+    # Check if username already exists
+    existing = db.query(User).filter(User.username == user_data.username).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken"
+        )
+    
+    # Create new user
+    user = User(
+        username=user_data.username,
+        password_hash=hash_password(user_data.password),
+        display_name=user_data.display_name or user_data.username
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    return user
+
+
+def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
+    """Authenticate a user by username and password."""
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        return None
+    
+    if not verify_password(password, user.password_hash):
+        return None
+    
+    return user
+
+
+def get_leaderboard(db: Session, limit: int = 10) -> list[LeaderboardEntry]:
+    """Get the top users by arts_spotted."""
+    users = db.query(User).order_by(User.arts_spotted.desc()).limit(limit).all()
+    
+    return [
+        LeaderboardEntry(
+            rank=i + 1,
+            username=user.username,
+            display_name=user.display_name,
+            arts_spotted=user.arts_spotted,
+            verified_spots=user.verified_spots
+        )
+        for i, user in enumerate(users)
+    ]
+
