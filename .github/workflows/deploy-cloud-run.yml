@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 env:
-  PROJECT_ID: "373413279391"
+  PROJECT_ID: "spot-anna-laurini"
   REGION: "europe-west1"
   SERVICE: "spot-the-artist"
 
