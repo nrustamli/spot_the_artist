@@ -1,16 +1,29 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import './AuthModal.css';
 
 function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
   const [mode, setMode] = useState(initialMode);
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
   
-  const { login, register } = useAuth();
+  const { login, register, resendVerification } = useAuth();
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setVerificationSent(false);
+      setResendSuccess(false);
+    }
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -22,14 +35,15 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
     try {
       if (mode === 'login') {
         await login(username, password);
+        onClose();
+        resetForm();
       } else {
-        await register(username, password, displayName);
+        const result = await register(username, email, password);
+        if (result.requiresVerification) {
+          setVerificationSent(true);
+          setVerificationEmail(result.email);
+        }
       }
-      onClose();
-      // Reset form
-      setUsername('');
-      setPassword('');
-      setDisplayName('');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -37,15 +51,105 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
     }
   };
 
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    setError('');
+    setResendSuccess(false);
+    
+    try {
+      await resendVerification(verificationEmail);
+      setResendSuccess(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setUsername('');
+    setEmail('');
+    setPassword('');
+    setVerificationSent(false);
+    setVerificationEmail('');
+    setResendSuccess(false);
+  };
+
   const switchMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
     setError('');
+    setVerificationSent(false);
   };
 
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  // Show verification sent message
+  if (verificationSent) {
+    return (
+      <div className="auth-modal-overlay" onClick={handleClose}>
+        <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+          <button className="auth-close" onClick={handleClose}>×</button>
+          
+          <div className="auth-header">
+            <div className="auth-icon">📧</div>
+            <h2 className="auth-title">Check Your Email</h2>
+            <p className="auth-subtitle">
+              We've sent a verification link to:
+            </p>
+            <p className="auth-email-highlight">{verificationEmail}</p>
+          </div>
+
+          <div className="auth-verification-info">
+            <p>Click the link in the email to verify your account and start hunting for art!</p>
+            <p className="auth-verification-note">
+              Don't see it? Check your spam folder.
+            </p>
+          </div>
+
+          {error && (
+            <div className="auth-error">
+              <span>⚠️</span>
+              {error}
+            </div>
+          )}
+
+          {resendSuccess && (
+            <div className="auth-success">
+              <span>✅</span>
+              Verification email sent!
+            </div>
+          )}
+
+          <div className="auth-verification-actions">
+            <button 
+              className="auth-resend"
+              onClick={handleResendVerification}
+              disabled={resendLoading}
+            >
+              {resendLoading ? 'Sending...' : 'Resend Email'}
+            </button>
+            <button 
+              className="auth-submit"
+              onClick={() => {
+                setVerificationSent(false);
+                setMode('login');
+              }}
+            >
+              Go to Login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="auth-modal-overlay" onClick={onClose}>
+    <div className="auth-modal-overlay" onClick={handleClose}>
       <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="auth-close" onClick={onClose}>×</button>
+        <button className="auth-close" onClick={handleClose}>×</button>
         
         <div className="auth-header">
           <div className="auth-icon">
@@ -70,36 +174,50 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
             </div>
           )}
 
-          <div className="auth-field">
-            <label htmlFor="username">Username</label>
-            <input
-              type="text"
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username"
-              required
-              minLength={3}
-              maxLength={50}
-              pattern="^[a-zA-Z0-9_]+$"
-              title="Letters, numbers, and underscores only"
-              disabled={loading}
-            />
-          </div>
-
-          {mode === 'register' && (
+          {mode === 'login' ? (
             <div className="auth-field">
-              <label htmlFor="displayName">Display Name (optional)</label>
+              <label htmlFor="username">Username or Email</label>
               <input
                 type="text"
-                id="displayName"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="How should we call you?"
-                maxLength={100}
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter username or email"
+                required
                 disabled={loading}
               />
             </div>
+          ) : (
+            <>
+              <div className="auth-field">
+                <label htmlFor="username">Username</label>
+                <input
+                  type="text"
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Choose a username"
+                  required
+                  minLength={3}
+                  maxLength={50}
+                  pattern="^[a-zA-Z0-9_]+$"
+                  title="Letters, numbers, and underscores only"
+                  disabled={loading}
+                />
+              </div>
+              <div className="auth-field">
+                <label htmlFor="email">Email</label>
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  required
+                  disabled={loading}
+                />
+              </div>
+            </>
           )}
 
           <div className="auth-field">

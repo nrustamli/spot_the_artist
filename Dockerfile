@@ -1,4 +1,4 @@
-# Dockerfile for Hugging Face Spaces
+# Dockerfile for Google Cloud Run
 # Builds both React frontend and Python backend in a single container
 
 # Stage 1: Build React frontend
@@ -25,8 +25,10 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+# Note: pillow-heif bundles its own libheif, no system package needed
+# Using libgl1 (not libgl1-mesa-glx) for newer Debian versions
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,29 +38,30 @@ COPY backend/requirements.txt ./
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download CLIP model during build (caches in image)
+RUN python -c "from transformers import CLIPModel, CLIPProcessor; \
+    CLIPModel.from_pretrained('openai/clip-vit-base-patch32'); \
+    CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32'); \
+    print('✅ CLIP model pre-downloaded')"
+
 # Copy backend source
 COPY backend/app ./app
 COPY backend/reference_art ./reference_art
+COPY backend/data ./data
 
 # Copy built frontend from previous stage
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Create a user for Hugging Face Spaces
-RUN useradd -m -u 1000 user
-USER user
-
 # Set environment variables
-ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH \
-    PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    PORT=8080
 
-# Expose port (Hugging Face Spaces uses 7860)
-EXPOSE 7860
+# Expose port (Cloud Run uses 8080 by default)
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:7860/api/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
-
+# Run the application - Cloud Run sets PORT env variable
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

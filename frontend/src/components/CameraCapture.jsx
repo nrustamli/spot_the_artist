@@ -1,10 +1,11 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import './CameraCapture.css';
 
-function CameraCapture({ onImageCapture, disabled }) {
+function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
+  const hasAutoStartedRef = useRef(false);
   
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState(null);
@@ -88,12 +89,20 @@ function CameraCapture({ onImageCapture, disabled }) {
     setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
   }, []);
 
+  // Auto-start when entering camera mode
+  useEffect(() => {
+    if (autoStart && !hasAutoStartedRef.current) {
+      hasAutoStartedRef.current = true;
+      startCamera();
+    }
+  }, [autoStart, startCamera]);
+
   // Restart camera when facing mode changes
   useEffect(() => {
     if (isActive) {
       startCamera();
     }
-  }, [facingMode]);
+  }, [facingMode, isActive, startCamera]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -107,7 +116,7 @@ function CameraCapture({ onImageCapture, disabled }) {
       <div className="camera-error">
         <div className="error-icon">📷</div>
         <p className="error-message">{error}</p>
-        <button className="retry-button" onClick={() => setError(null)}>
+        <button className="retry-button" onClick={startCamera}>
           Try Again
         </button>
       </div>

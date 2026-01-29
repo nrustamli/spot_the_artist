@@ -2,7 +2,7 @@
 Anna Laurini Art Verification API
 
 FastAPI server that handles database operations (auth, gallery) locally
-and proxies CLIP verification to a remote Colab backend.
+and can run CLIP verification either locally or via a remote backend.
 """
 
 import os
@@ -18,18 +18,24 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from PIL import Image
 
 from .database import init_db, get_db, User
 from .auth import (
     UserCreate, UserLogin, UserResponse, TokenResponse, LeaderboardEntry,
+    VerifyEmailRequest, ResendVerificationRequest,
     register_user, authenticate_user, create_token, revoke_token,
-    get_current_user, get_optional_user, get_leaderboard
+    get_current_user, get_optional_user, get_leaderboard,
+    verify_user_email, resend_verification_email
 )
 from .gallery_service import (
     GalleryImageCreate, GalleryImageResponse, GalleryListResponse,
     save_to_gallery, get_gallery_items, get_gallery_item, delete_gallery_item,
     get_gallery_stats
 )
+
+# Import CLIP service for local verification
+from .clip_service import get_clip_service, CLIPService
 
 
 # Response models
@@ -46,35 +52,53 @@ class HealthResponse(BaseModel):
     status: str
     mode: str
     clip_backend: str | None = None
+    reference_images: int | None = None
     database_connected: bool = True
 
 
 # Remote CLIP backend URL (Colab with ngrok)
-# Set via environment variable: CLIP_BACKEND_URL
+# If not set, will use local CLIP service
 CLIP_BACKEND_URL = os.environ.get("CLIP_BACKEND_URL", "")
 
-# HTTP client for proxying requests
+# Reference art directory for local CLIP
+REFERENCE_ART_DIR = os.environ.get("REFERENCE_ART_DIR", "reference_art")
+
+# HTTP client for proxying requests (when using remote backend)
 http_client: httpx.AsyncClient | None = None
+
+# Local CLIP service (when running standalone)
+clip_service: CLIPService | None = None
+
+# Supported image content types (including HEIC)
+SUPPORTED_IMAGE_TYPES = {
+    "image/jpeg", "image/jpg", "image/png", "image/webp", 
+    "image/heic", "image/heif"
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize database and HTTP client on startup."""
-    global http_client
+    """Initialize database, CLIP service, and HTTP client on startup."""
+    global http_client, clip_service
     
     # Initialize database
     init_db()
+    print("✅ Database initialized")
     
-    # Initialize HTTP client for proxying to Colab
+    # Initialize HTTP client for proxying to Colab (if using remote backend)
     http_client = httpx.AsyncClient(timeout=60.0)
     
     if CLIP_BACKEND_URL:
-        print(f"🔗 CLIP backend: {CLIP_BACKEND_URL}")
+        print(f"🔗 Using remote CLIP backend: {CLIP_BACKEND_URL}")
     else:
-        print("⚠️  No CLIP_BACKEND_URL set - verification will fail")
-        print("   Set it with: CLIP_BACKEND_URL=https://your-ngrok.ngrok-free.dev")
-    
-    print("✅ Database initialized")
+        # Load local CLIP service
+        print(f"🔧 Loading local CLIP service (reference_art: {REFERENCE_ART_DIR})")
+        try:
+            clip_service = get_clip_service(REFERENCE_ART_DIR)
+            print(f"✅ Local CLIP service ready with {clip_service.get_reference_count()} reference images")
+        except Exception as e:
+            print(f"❌ Failed to load CLIP service: {e}")
+            clip_service = None
     
     yield
     
@@ -109,6 +133,7 @@ async def health_check():
         status="healthy",
         mode="proxy" if CLIP_BACKEND_URL else "standalone",
         clip_backend=CLIP_BACKEND_URL or None,
+        reference_images=clip_service.get_reference_count() if clip_service else None,
         database_connected=True
     )
 
@@ -118,38 +143,63 @@ async def verify_artwork(file: UploadFile = File(...)):
     """
     Verify if an uploaded image matches Anna Laurini's artwork.
     
-    Proxies the request to the Colab CLIP backend for GPU-accelerated verification.
+    Uses local CLIP service or proxies to remote backend if configured.
+    Supports JPEG, PNG, WebP, and HEIC/HEIF image formats.
     """
-    if not CLIP_BACKEND_URL:
-        raise HTTPException(
-            status_code=503, 
-            detail="CLIP backend not configured. Set CLIP_BACKEND_URL environment variable."
-        )
+    # Validate file type (support HEIC and standard formats)
+    content_type = file.content_type or ""
+    filename = file.filename or ""
     
-    # Validate file type
-    if not file.content_type or not file.content_type.startswith("image/"):
+    # Check by content type or file extension for HEIC (some browsers don't send correct MIME)
+    is_valid_type = (
+        content_type.startswith("image/") or
+        filename.lower().endswith(('.heic', '.heif'))
+    )
+    
+    if not is_valid_type:
         raise HTTPException(
             status_code=400,
-            detail="Invalid file type. Please upload an image (JPEG, PNG, WebP)."
+            detail="Invalid file type. Please upload an image (JPEG, PNG, WebP, HEIC)."
         )
     
     try:
         # Read file contents
         contents = await file.read()
         
-        # Proxy to Colab backend
-        files = {"file": (file.filename, contents, file.content_type)}
-        response = await http_client.post(
-            f"{CLIP_BACKEND_URL}/api/verify",
-            files=files,
-            headers={"ngrok-skip-browser-warning": "true"}
-        )
+        # Use remote backend if configured
+        if CLIP_BACKEND_URL:
+            files = {"file": (file.filename, contents, file.content_type)}
+            response = await http_client.post(
+                f"{CLIP_BACKEND_URL}/api/verify",
+                files=files,
+                headers={"ngrok-skip-browser-warning": "true"}
+            )
+            
+            if response.status_code != 200:
+                error_detail = response.json().get("detail", "Verification failed")
+                raise HTTPException(status_code=response.status_code, detail=error_detail)
+            
+            result = response.json()
+            
+            return VerificationResponse(
+                is_verified=result["is_verified"],
+                confidence=result["confidence"],
+                message=result["message"],
+                best_match=result.get("best_match")
+            )
         
-        if response.status_code != 200:
-            error_detail = response.json().get("detail", "Verification failed")
-            raise HTTPException(status_code=response.status_code, detail=error_detail)
+        # Use local CLIP service
+        if clip_service is None:
+            raise HTTPException(
+                status_code=503,
+                detail="CLIP service not available. Please try again later."
+            )
         
-        result = response.json()
+        # Load image with PIL (supports HEIC via pillow-heif)
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        
+        # Verify with local CLIP
+        result = clip_service.verify_image(image)
         
         return VerificationResponse(
             is_verified=result["is_verified"],
@@ -174,21 +224,62 @@ async def verify_artwork(file: UploadFile = File(...)):
 # Authentication Endpoints
 # =============================================================================
 
-@app.post("/api/auth/register", response_model=TokenResponse, tags=["Authentication"])
+class RegisterResponse(BaseModel):
+    """Response model for registration (no token until verified)."""
+    message: str
+    email: str
+    requires_verification: bool = True
+
+
+@app.post("/api/auth/register", response_model=RegisterResponse, tags=["Authentication"])
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """
     Register a new user account.
     
     - Username must be 3-50 characters (letters, numbers, underscores only)
+    - Email must be a valid email address
     - Password must be at least 6 characters
+    
+    A verification email will be sent to the provided email address.
+    The user must verify their email before logging in.
     """
-    user = register_user(db, user_data)
+    user = await register_user(db, user_data)
+    
+    return RegisterResponse(
+        message="Account created! Please check your email to verify your account.",
+        email=user.email,
+        requires_verification=True
+    )
+
+
+@app.post("/api/auth/verify-email", response_model=TokenResponse, tags=["Authentication"])
+async def verify_email(request: VerifyEmailRequest, db: Session = Depends(get_db)):
+    """
+    Verify email address using the token sent via email.
+    
+    After successful verification, returns an auth token to log the user in.
+    """
+    user = verify_user_email(db, request.token)
     token = create_token(user.id)
     
     return TokenResponse(
         access_token=token,
         user=UserResponse.model_validate(user)
     )
+
+
+@app.post("/api/auth/resend-verification", tags=["Authentication"])
+async def resend_verification(request: ResendVerificationRequest, db: Session = Depends(get_db)):
+    """
+    Resend verification email.
+    
+    Use this if the original verification email was not received or the link expired.
+    """
+    await resend_verification_email(db, request.email)
+    
+    return {
+        "message": "If an account with this email exists and is not yet verified, a new verification email has been sent."
+    }
 
 
 @app.post("/api/auth/login", response_model=TokenResponse, tags=["Authentication"])
@@ -253,7 +344,6 @@ async def add_to_gallery(
         id=gallery_image.id,
         user_id=gallery_image.user_id,
         username=user.username,
-        display_name=user.display_name,
         image_data=gallery_image.image_data,
         is_verified=gallery_image.is_verified,
         confidence=gallery_image.confidence,
@@ -301,7 +391,6 @@ async def get_gallery_image(item_id: int, db: Session = Depends(get_db)):
         id=item.id,
         user_id=item.user_id,
         username=item.user.username,
-        display_name=item.user.display_name,
         image_data=item.image_data,
         is_verified=item.is_verified,
         confidence=item.confidence,

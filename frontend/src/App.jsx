@@ -14,7 +14,11 @@ import './App.css';
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 function App() {
-  const { isAuthenticated, token, refreshUser } = useAuth();
+  const { user, isAuthenticated, token, refreshUser, verifyEmail } = useAuth();
+  
+  // Email verification state
+  const [emailVerificationStatus, setEmailVerificationStatus] = useState(null); // null, 'verifying', 'success', 'error'
+  const [emailVerificationMessage, setEmailVerificationMessage] = useState('');
   
   const [mode, setMode] = useState('select'); // 'select', 'camera', 'upload'
   const [status, setStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
@@ -22,22 +26,44 @@ function App() {
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [error, setError] = useState(null);
+  const [pendingAutoSave, setPendingAutoSave] = useState(false);
   
-  // Gallery state
+  // Page state
+  const [activePage, setActivePage] = useState('home'); // 'home', 'my-gallery'
+  const [pendingPage, setPendingPage] = useState(null);
+
+  // Gallery state (public)
   const [galleryItems, setGalleryItems] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(true);
   const [galleryPage, setGalleryPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+
+  // Gallery state (user-specific)
+  const [userGalleryItems, setUserGalleryItems] = useState([]);
+  const [userGalleryLoading, setUserGalleryLoading] = useState(true);
+  const [userGalleryPage, setUserGalleryPage] = useState(1);
+  const [userHasMore, setUserHasMore] = useState(false);
   
   // Auth modal state
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
 
-  // Fetch gallery from API
+  const buildGalleryUrl = (page, userId) => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      per_page: '20',
+    });
+    if (userId) {
+      params.set('user_id', userId.toString());
+    }
+    return `${API_URL}/api/gallery?${params.toString()}`;
+  };
+
+  // Fetch public gallery from API
   const fetchGallery = useCallback(async (page = 1, append = false) => {
     try {
       setGalleryLoading(true);
-      const response = await fetch(`${API_URL}/api/gallery?page=${page}&per_page=20`, {
+      const response = await fetch(buildGalleryUrl(page), {
         headers: {
           'ngrok-skip-browser-warning': 'true',
         },
@@ -59,7 +85,6 @@ function App() {
         bestMatch: item.best_match,
         timestamp: item.created_at,
         username: item.username,
-        displayName: item.display_name,
         userId: item.user_id,
       }));
       
@@ -78,16 +103,118 @@ function App() {
     }
   }, []);
 
-  // Load gallery on mount
+  // Fetch user-specific gallery from API
+  const fetchUserGallery = useCallback(async (page = 1, append = false, userId = null) => {
+    if (!userId) {
+      setUserGalleryItems([]);
+      setUserHasMore(false);
+      setUserGalleryPage(1);
+      setUserGalleryLoading(false);
+      return;
+    }
+
+    try {
+      setUserGalleryLoading(true);
+      const response = await fetch(buildGalleryUrl(page, userId), {
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load gallery');
+      }
+
+      const data = await response.json();
+
+      const items = data.items.map(item => ({
+        id: item.id.toString(),
+        image: item.image_data,
+        isVerified: item.is_verified,
+        confidence: item.confidence,
+        message: item.message,
+        bestMatch: item.best_match,
+        timestamp: item.created_at,
+        username: item.username,
+        userId: item.user_id,
+      }));
+
+      if (append) {
+        setUserGalleryItems(prev => [...prev, ...items]);
+      } else {
+        setUserGalleryItems(items);
+      }
+
+      setUserHasMore(data.has_more);
+      setUserGalleryPage(page);
+    } catch (err) {
+      console.error('Failed to fetch user gallery:', err);
+    } finally {
+      setUserGalleryLoading(false);
+    }
+  }, []);
+
+  // Load public gallery on mount
   useEffect(() => {
     fetchGallery();
   }, [fetchGallery]);
+
+  // Load user gallery when needed
+  useEffect(() => {
+    if (activePage === 'my-gallery' && user?.id) {
+      fetchUserGallery(1, false, user.id);
+    }
+  }, [activePage, user?.id, fetchUserGallery]);
+
+  // Navigate to pending page after login
+  useEffect(() => {
+    if (pendingPage && isAuthenticated) {
+      setActivePage(pendingPage);
+      setPendingPage(null);
+    }
+  }, [pendingPage, isAuthenticated]);
+
+  // Return to home if user logs out while on personal page
+  useEffect(() => {
+    if (!isAuthenticated && activePage === 'my-gallery') {
+      setActivePage('home');
+    }
+  }, [isAuthenticated, activePage]);
+
+  // Handle email verification from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const verificationToken = params.get('token');
+    const isVerifyPage = window.location.pathname === '/verify-email';
+    
+    if (isVerifyPage && verificationToken) {
+      setEmailVerificationStatus('verifying');
+      
+      verifyEmail(verificationToken)
+        .then(() => {
+          setEmailVerificationStatus('success');
+          setEmailVerificationMessage('Your email has been verified! You are now logged in.');
+          // Clean up URL
+          window.history.replaceState({}, '', '/');
+        })
+        .catch((err) => {
+          setEmailVerificationStatus('error');
+          setEmailVerificationMessage(err.message || 'Verification failed. Please try again.');
+        });
+    }
+  }, [verifyEmail]);
 
   const loadMoreGallery = useCallback(() => {
     if (!galleryLoading && hasMore) {
       fetchGallery(galleryPage + 1, true);
     }
   }, [fetchGallery, galleryLoading, hasMore, galleryPage]);
+
+  const loadMoreUserGallery = useCallback(() => {
+    if (!userGalleryLoading && userHasMore && user?.id) {
+      fetchUserGallery(userGalleryPage + 1, true, user.id);
+    }
+  }, [fetchUserGallery, userGalleryLoading, userHasMore, userGalleryPage, user?.id]);
 
   const verifyImage = useCallback(async (imageData) => {
     setImagePreview(imageData.preview);
@@ -116,6 +243,10 @@ function App() {
       const data = await response.json();
       setResult(data);
       setStatus('success');
+
+      if (data.is_verified) {
+        setPendingAutoSave(true);
+      }
     } catch (err) {
       console.error('Verification error:', err);
       setError(err.message || 'Failed to verify image. Please try again.');
@@ -127,13 +258,20 @@ function App() {
     verifyImage(imageData);
   }, [verifyImage]);
 
-  const handleSaveToGallery = useCallback(async () => {
-    if (!result || !imagePreview) return;
+  const handleSaveToGallery = useCallback(async ({ resultOverride, previewOverride, auto = false } = {}) => {
+    const resultToSave = resultOverride || result;
+    const previewToSave = previewOverride || imagePreview;
+
+    if (!resultToSave || !previewToSave) return;
+    if (!resultToSave.is_verified) return;
 
     // If not authenticated, show login modal
     if (!isAuthenticated) {
       setAuthModalMode('login');
       setShowAuthModal(true);
+      if (auto) {
+        setPendingAutoSave(true);
+      }
       return;
     }
 
@@ -148,11 +286,11 @@ function App() {
           'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
-          image_data: imagePreview,
-          is_verified: result.is_verified,
-          confidence: result.confidence,
-          message: result.message,
-          best_match: result.best_match,
+          image_data: previewToSave,
+          is_verified: resultToSave.is_verified,
+          confidence: resultToSave.confidence,
+          message: resultToSave.message,
+          best_match: resultToSave.best_match,
         }),
       });
 
@@ -161,17 +299,19 @@ function App() {
         throw new Error(errorData.detail || 'Failed to save to gallery');
       }
 
-      // Refresh user stats and gallery
+      // Refresh user stats and galleries
       await refreshUser();
       await fetchGallery();
+      await fetchUserGallery(1, false, user?.id);
       
+      setPendingAutoSave(false);
       handleReset();
     } catch (err) {
       console.error('Save to gallery error:', err);
       setError(err.message || 'Failed to save to gallery. Please try again.');
       setStatus('error');
     }
-  }, [result, imagePreview, isAuthenticated, token, refreshUser, fetchGallery]);
+  }, [result, imagePreview, isAuthenticated, token, refreshUser, fetchGallery, fetchUserGallery, user?.id]);
 
   const handleDeleteFromGallery = useCallback(async (id) => {
     if (!isAuthenticated) return;
@@ -192,6 +332,7 @@ function App() {
 
       // Remove from local state
       setGalleryItems(prev => prev.filter(item => item.id !== id));
+      setUserGalleryItems(prev => prev.filter(item => item.id !== id));
       
       // Refresh user stats
       await refreshUser();
@@ -208,14 +349,69 @@ function App() {
     setImagePreview(null);
     setImageFile(null);
     setError(null);
+    setPendingAutoSave(false);
   }, []);
+
+  useEffect(() => {
+    if (!pendingAutoSave || !isAuthenticated) return;
+    if (!result || !imagePreview) return;
+    if (!result.is_verified) {
+      setPendingAutoSave(false);
+      return;
+    }
+
+    handleSaveToGallery({
+      resultOverride: result,
+      previewOverride: imagePreview,
+      auto: true,
+    });
+  }, [pendingAutoSave, result, imagePreview, isAuthenticated, handleSaveToGallery]);
 
   const openAuthModal = useCallback((mode = 'login') => {
     setAuthModalMode(mode);
     setShowAuthModal(true);
   }, []);
 
+  const openMyGallery = useCallback(() => {
+    if (!isAuthenticated) {
+      setAuthModalMode('login');
+      setShowAuthModal(true);
+      setPendingPage('my-gallery');
+      return;
+    }
+    setActivePage('my-gallery');
+  }, [isAuthenticated]);
+
+  const openExploreGallery = useCallback(() => {
+    setActivePage('home');
+  }, []);
+
   const renderContent = () => {
+    if (activePage === 'my-gallery') {
+      return (
+        <div className="page-section">
+          <div className="page-header">
+            <button className="back-button" onClick={() => setActivePage('home')}>
+              ← Back to Explore
+            </button>
+            <div className="page-title">My Gallery</div>
+            <p className="page-subtitle">Only the artworks you spotted</p>
+          </div>
+
+          <Gallery
+            items={userGalleryItems}
+            onItemDelete={handleDeleteFromGallery}
+            loading={userGalleryLoading}
+            hasMore={userHasMore}
+            onLoadMore={loadMoreUserGallery}
+            isAuthenticated={isAuthenticated}
+            emptyTitle="No artworks in your gallery yet"
+            emptySubtitle="Save your verified spots to see them here."
+          />
+        </div>
+      );
+    }
+
     // Show result
     if (status === 'success' && result) {
       return (
@@ -226,12 +422,14 @@ function App() {
             onReset={handleReset}
           />
           <div className="save-actions">
-            <button className="save-button" onClick={handleSaveToGallery}>
-              <span>💾</span>
-              <span>{isAuthenticated ? 'Save to Gallery' : 'Sign in to Save'}</span>
-            </button>
+            {result.is_verified && (
+              <button className="save-button" onClick={handleSaveToGallery}>
+                <span>💾</span>
+                <span>{isAuthenticated ? 'Save to Gallery' : 'Sign in to Save'}</span>
+              </button>
+            )}
             <button className="discard-button" onClick={handleReset}>
-              <span>Skip</span>
+              <span>{result.is_verified ? 'Skip' : 'Back'}</span>
             </button>
           </div>
         </div>
@@ -314,6 +512,7 @@ function App() {
             <CameraCapture
               onImageCapture={handleImageSelect}
               disabled={status === 'loading'}
+              autoStart
             />
           </div>
         )}
@@ -333,9 +532,50 @@ function App() {
     );
   };
 
+  // Render email verification banner
+  const renderVerificationBanner = () => {
+    if (!emailVerificationStatus) return null;
+    
+    if (emailVerificationStatus === 'verifying') {
+      return (
+        <div className="verification-banner verification-loading">
+          <span className="verification-spinner"></span>
+          Verifying your email...
+        </div>
+      );
+    }
+    
+    if (emailVerificationStatus === 'success') {
+      return (
+        <div className="verification-banner verification-success">
+          <span>✅</span>
+          {emailVerificationMessage}
+          <button onClick={() => setEmailVerificationStatus(null)}>×</button>
+        </div>
+      );
+    }
+    
+    if (emailVerificationStatus === 'error') {
+      return (
+        <div className="verification-banner verification-error">
+          <span>❌</span>
+          {emailVerificationMessage}
+          <button onClick={() => setEmailVerificationStatus(null)}>×</button>
+        </div>
+      );
+    }
+    
+    return null;
+  };
+
   return (
     <div className="app">
-      <Header onLoginClick={() => openAuthModal('login')} />
+      <Header
+        onLoginClick={() => openAuthModal('login')}
+        onMyGalleryClick={openMyGallery}
+        onExploreClick={openExploreGallery}
+      />
+      {renderVerificationBanner()}
       <main className="main-content">
         {renderContent()}
       </main>

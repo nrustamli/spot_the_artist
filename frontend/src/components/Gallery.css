@@ -286,9 +286,9 @@
   color: var(--border-green);
 }
 
-.modal-status.uncertain {
-  background: rgba(255, 193, 7, 0.1);
-  color: var(--border-orange);
+.modal-status.rejected {
+  background: rgba(229, 57, 53, 0.1);
+  color: var(--accent-red);
 }
 
 .modal-confidence {

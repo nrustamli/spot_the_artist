@@ -1,12 +1,16 @@
 import UserMenu from './UserMenu';
 import './Header.css';
 
-function Header({ onLoginClick }) {
+function Header({ onLoginClick, onMyGalleryClick, onExploreClick }) {
   return (
     <header className="header">
       <div className="header-content">
         <div className="header-right">
-          <UserMenu onLoginClick={onLoginClick} />
+          <UserMenu
+            onLoginClick={onLoginClick}
+            onMyGalleryClick={onMyGalleryClick}
+            onExploreClick={onExploreClick}
+          />
         </div>
       </div>
       

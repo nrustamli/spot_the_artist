@@ -34,9 +34,14 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
-    display_name = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Email verification
+    email_verified = Column(Boolean, default=False)
+    verification_token = Column(String(100), nullable=True)
+    verification_token_expires = Column(DateTime, nullable=True)
     
     # Statistics
     arts_spotted = Column(Integer, default=0)

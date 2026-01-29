@@ -20,23 +20,12 @@ function VerificationResult({ result, imagePreview, onReset }) {
     };
   }, [result.confidence]);
 
-  const getStatusClass = () => {
-    if (result.is_verified) return 'verified';
-    if (result.confidence >= 50) return 'uncertain';
-    return 'rejected';
-  };
+  const getStatusClass = () => (result.is_verified ? 'verified' : 'rejected');
 
-  const getStatusIcon = () => {
-    if (result.is_verified) return '✅';
-    if (result.confidence >= 50) return '🤔';
-    return '❌';
-  };
+  const getStatusIcon = () => (result.is_verified ? '✅' : '❌');
 
-  const getMeterColor = () => {
-    if (result.confidence >= 75) return 'var(--accent-green)';
-    if (result.confidence >= 50) return 'var(--accent-gold)';
-    return 'var(--accent-red)';
-  };
+  const getMeterColor = () =>
+    result.confidence >= 80 ? 'var(--accent-green)' : 'var(--accent-red)';
 
   return (
     <div className={`verification-result ${showResult ? 'visible' : ''}`}>
@@ -53,33 +42,22 @@ function VerificationResult({ result, imagePreview, onReset }) {
         <div className={`result-status ${getStatusClass()}`}>
           <span className="status-icon">{getStatusIcon()}</span>
           <span className="status-text">
-            {result.is_verified ? 'Verified!' : result.confidence >= 50 ? 'Uncertain' : 'Not Recognized'}
+            {result.is_verified ? 'Verified!' : 'Not Recognized'}
           </span>
         </div>
 
         <div className="confidence-section">
           <div className="confidence-header">
             <span className="confidence-label">Confidence</span>
-            <span className="confidence-value">{Math.round(meterValue)}%</span>
           </div>
           <div className="confidence-meter">
-            <div 
+            <div
               className="confidence-fill"
-              style={{ 
+              style={{
                 width: `${meterValue}%`,
                 backgroundColor: getMeterColor()
               }}
             />
-            <div className="confidence-markers">
-              <span className="marker" style={{ left: '50%' }}></span>
-              <span className="marker" style={{ left: '75%' }}></span>
-            </div>
-          </div>
-          <div className="confidence-labels">
-            <span>0%</span>
-            <span>50%</span>
-            <span>75%</span>
-            <span>100%</span>
           </div>
         </div>
 

@@ -13,12 +13,22 @@ from PIL import Image
 import torch
 from transformers import CLIPProcessor, CLIPModel
 
+# Register HEIC/HEIF support with Pillow
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    HEIC_SUPPORTED = True
+    print("✅ HEIC/HEIF support enabled")
+except ImportError:
+    HEIC_SUPPORTED = False
+    print("⚠️ HEIC/HEIF support not available (install pillow-heif)")
+
 
 class CLIPService:
     """Service for verifying artwork using CLIP embeddings."""
     
     MODEL_NAME = "openai/clip-vit-base-patch32"
-    SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+    SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
     
     def __init__(self, reference_dir: str = "reference_art"):
         """
@@ -33,9 +43,9 @@ class CLIPService:
         # Load CLIP model and processor
         print(f"📥 Loading CLIP model: {self.MODEL_NAME}")
         self.model = CLIPModel.from_pretrained(self.MODEL_NAME).to(self.device)
-        self.processor = CLIPProcessor.from_pretrained(self.MODEL_NAME)
+        self.processor = CLIPProcessor.from_pretrained(self.MODEL_NAME, use_fast=True)
         self.model.eval()
-        print("✅ CLIP model loaded successfully")
+        print(f"✅ CLIP model loaded successfully (type: {type(self.model).__name__})")
         
         # Store reference embeddings
         self.reference_embeddings: Optional[torch.Tensor] = None
@@ -104,10 +114,20 @@ class CLIPService:
         inputs = self.processor(images=image, return_tensors="pt").to(self.device)
         
         with torch.no_grad():
-            image_features = self.model.get_image_features(**inputs)
+            outputs = self.model.get_image_features(**inputs)
+            # Handle both old (tensor) and new (object with .last_hidden_state) API
+            if hasattr(outputs, 'image_embeds'):
+                image_features = outputs.image_embeds
+            elif hasattr(outputs, 'pooler_output'):
+                image_features = outputs.pooler_output
+            elif isinstance(outputs, torch.Tensor):
+                image_features = outputs
+            else:
+                # Fallback: try to get the tensor directly
+                image_features = outputs
         
         # Normalize for cosine similarity
-        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        image_features = image_features / torch.norm(image_features, dim=-1, keepdim=True)
         return image_features
     
     def verify_image(self, image: Image.Image) -> dict:
@@ -158,14 +178,11 @@ class CLIPService:
         # This is more robust than using just the best match
         confidence = self._scale_similarity(avg_top_k)
         
-        # Determine verification status with stricter thresholds
+        # Determine verification status with stricter threshold
         # Threshold raised to 80% to reduce false positives
         if confidence >= 80:
             is_verified = True
             message = "✅ Verified! This looks like Anna Laurini's artwork!"
-        elif confidence >= 60:
-            is_verified = False
-            message = "🤔 Uncertain. This might be Anna Laurini's art, but we're not sure."
         else:
             is_verified = False
             message = "❌ Not recognized as Anna Laurini's artwork."

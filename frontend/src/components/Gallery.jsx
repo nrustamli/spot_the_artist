@@ -12,7 +12,16 @@ const BORDER_COLORS = [
   
 ];
 
-function Gallery({ items, onItemDelete, loading, hasMore, onLoadMore, isAuthenticated }) {
+function Gallery({
+  items,
+  onItemDelete,
+  loading,
+  hasMore,
+  onLoadMore,
+  isAuthenticated,
+  emptyTitle = 'No artworks spotted yet',
+  emptySubtitle = 'Be the first to discover and share!',
+}) {
   const [selectedItem, setSelectedItem] = useState(null);
   const { user } = useAuth();
 
@@ -31,8 +40,8 @@ function Gallery({ items, onItemDelete, loading, hasMore, onLoadMore, isAuthenti
     return (
       <div className="gallery-empty">
         <div className="empty-icon">🖼️</div>
-        <p className="empty-text">No artworks spotted yet</p>
-        <p className="empty-subtext">Be the first to discover and share!</p>
+        <p className="empty-text">{emptyTitle}</p>
+        <p className="empty-subtext">{emptySubtitle}</p>
       </div>
     );
   }
@@ -80,7 +89,7 @@ function Gallery({ items, onItemDelete, loading, hasMore, onLoadMore, isAuthenti
               </div>
               <div className="gallery-card-info">
                 <span className="card-username">
-                  {item.displayName || item.username || 'Anonymous'}
+                  {item.username || 'Anonymous'}
                 </span>
                 <div className="card-location">
                   <img src="/icon-location.svg" alt="" className="location-icon" />
@@ -123,15 +132,15 @@ function Gallery({ items, onItemDelete, loading, hasMore, onLoadMore, isAuthenti
             <div className="modal-details">
               <div className="modal-user">
                 <span className="user-avatar-small">
-                  {(selectedItem.displayName || selectedItem.username || 'U')[0].toUpperCase()}
+                  {(selectedItem.username || 'U')[0].toUpperCase()}
                 </span>
                 <span className="user-name-text">
-                  {selectedItem.displayName || selectedItem.username}
+                  {selectedItem.username}
                 </span>
               </div>
 
-              <div className={`modal-status ${selectedItem.isVerified ? 'verified' : 'uncertain'}`}>
-                {selectedItem.isVerified ? '✅ Verified Anna Laurini' : '🤔 Uncertain Match'}
+              <div className={`modal-status ${selectedItem.isVerified ? 'verified' : 'rejected'}`}>
+                {selectedItem.isVerified ? '✅ Verified Anna Laurini' : '❌ Not Recognized'}
               </div>
               
               <div className="modal-confidence">

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import './UserMenu.css';
 
-function UserMenu({ onLoginClick }) {
+function UserMenu({ onLoginClick, onMyGalleryClick, onExploreClick }) {
   const { user, isAuthenticated, logout } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
@@ -22,7 +22,7 @@ function UserMenu({ onLoginClick }) {
   if (!isAuthenticated) {
     return (
       <button className="login-button" onClick={onLoginClick}>
-        <img src="/icon-user.svg" alt="" className="login-icon" />
+        Sign In
       </button>
     );
   }
@@ -34,7 +34,7 @@ function UserMenu({ onLoginClick }) {
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="user-avatar">
-          {(user?.display_name || user?.username || 'U')[0].toUpperCase()}
+          {(user?.username || 'U')[0].toUpperCase()}
         </div>
         <span className={`dropdown-arrow ${isOpen ? 'open' : ''}`}>▼</span>
       </button>
@@ -43,11 +43,10 @@ function UserMenu({ onLoginClick }) {
         <div className="user-dropdown">
           <div className="dropdown-header">
             <div className="dropdown-avatar">
-              {(user?.display_name || user?.username || 'U')[0].toUpperCase()}
+              {(user?.username || 'U')[0].toUpperCase()}
             </div>
             <div className="dropdown-user-info">
-              <span className="dropdown-name">{user?.display_name || user?.username}</span>
-              <span className="dropdown-username">@{user?.username}</span>
+              <span className="dropdown-name">{user?.username}</span>
             </div>
           </div>
           
@@ -61,6 +60,30 @@ function UserMenu({ onLoginClick }) {
               <span className="stat-label">Verified</span>
             </div>
           </div>
+
+          <div className="dropdown-divider"></div>
+
+          <button
+            className="dropdown-item"
+            onClick={() => {
+              onExploreClick?.();
+              setIsOpen(false);
+            }}
+          >
+            <span>🌍</span>
+            Explore Gallery
+          </button>
+
+          <button
+            className="dropdown-item"
+            onClick={() => {
+              onMyGalleryClick?.();
+              setIsOpen(false);
+            }}
+          >
+            <span>🖼️</span>
+            My Gallery
+          </button>
 
           <div className="dropdown-divider"></div>
 

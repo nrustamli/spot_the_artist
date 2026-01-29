@@ -27,7 +27,6 @@ class GalleryImageResponse(BaseModel):
     id: int
     user_id: int
     username: str
-    display_name: Optional[str]
     image_data: str
     is_verified: bool
     confidence: float
@@ -112,7 +111,6 @@ def get_gallery_items(
             id=item.id,
             user_id=item.user_id,
             username=item.user.username,
-            display_name=item.user.display_name,
             image_data=item.image_data,
             is_verified=item.is_verified,
             confidence=item.confidence,

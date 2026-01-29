@@ -2,20 +2,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: var(--accent-red);
+  color: white;
   border: none;
-  padding: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: all 0.2s ease;
+  font-family: inherit;
 }
 
 .login-button:hover {
-  opacity: 0.7;
-}
-
-.login-icon {
-  width: 24px;
-  height: 24px;
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 
 .user-menu {

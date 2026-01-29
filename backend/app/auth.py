@@ -12,10 +12,11 @@ from functools import lru_cache
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
 
 from .database import get_db, User
+from .email_service import generate_verification_token, send_verification_email
 
 # Simple token storage (in production, use Redis or JWT)
 # Format: {token: {"user_id": id, "expires": datetime}}
@@ -32,8 +33,8 @@ TOKEN_EXPIRATION_DAYS = 7
 class UserCreate(BaseModel):
     """Request model for user registration."""
     username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_]+$")
+    email: EmailStr = Field(..., description="Valid email address for verification")
     password: str = Field(..., min_length=6, max_length=100)
-    display_name: Optional[str] = Field(None, max_length=100)
 
 
 class UserLogin(BaseModel):
@@ -46,13 +47,24 @@ class UserResponse(BaseModel):
     """Response model for user data."""
     id: int
     username: str
-    display_name: Optional[str]
+    email: str
+    email_verified: bool
     arts_spotted: int
     verified_spots: int
     created_at: datetime
     
     class Config:
         from_attributes = True
+
+
+class VerifyEmailRequest(BaseModel):
+    """Request model for email verification."""
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request model for resending verification email."""
+    email: EmailStr
 
 
 class TokenResponse(BaseModel):
@@ -66,7 +78,6 @@ class LeaderboardEntry(BaseModel):
     """Entry in the leaderboard."""
     rank: int
     username: str
-    display_name: Optional[str]
     arts_spotted: int
     verified_spots: int
 
@@ -161,8 +172,8 @@ async def get_optional_user(
 
 
 # Auth service functions
-def register_user(db: Session, user_data: UserCreate) -> User:
-    """Register a new user."""
+async def register_user(db: Session, user_data: UserCreate) -> User:
+    """Register a new user and send verification email."""
     # Check if username already exists
     existing = db.query(User).filter(User.username == user_data.username).first()
     if existing:
@@ -171,27 +182,114 @@ def register_user(db: Session, user_data: UserCreate) -> User:
             detail="Username already taken"
         )
     
+    # Check if email already exists
+    existing_email = db.query(User).filter(User.email == user_data.email).first()
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Generate verification token
+    token, expires = generate_verification_token()
+    
     # Create new user
     user = User(
         username=user_data.username,
+        email=user_data.email,
         password_hash=hash_password(user_data.password),
-        display_name=user_data.display_name or user_data.username
+        email_verified=False,
+        verification_token=token,
+        verification_token_expires=expires
     )
     db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    # Send verification email (non-blocking)
+    await send_verification_email(user.email, user.username, token)
+    
+    return user
+
+
+def verify_user_email(db: Session, token: str) -> User:
+    """Verify a user's email using the verification token."""
+    user = db.query(User).filter(User.verification_token == token).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification token"
+        )
+    
+    if user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified"
+        )
+    
+    if user.verification_token_expires and datetime.utcnow() > user.verification_token_expires:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification token has expired. Please request a new one."
+        )
+    
+    # Mark email as verified
+    user.email_verified = True
+    user.verification_token = None
+    user.verification_token_expires = None
     db.commit()
     db.refresh(user)
     
     return user
 
 
-def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
-    """Authenticate a user by username and password."""
-    user = db.query(User).filter(User.username == username).first()
+async def resend_verification_email(db: Session, email: str) -> bool:
+    """Resend verification email to a user."""
+    user = db.query(User).filter(User.email == email).first()
+    
+    if not user:
+        # Don't reveal if email exists
+        return True
+    
+    if user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified"
+        )
+    
+    # Generate new token
+    token, expires = generate_verification_token()
+    user.verification_token = token
+    user.verification_token_expires = expires
+    db.commit()
+    
+    # Send email
+    await send_verification_email(user.email, user.username, token)
+    
+    return True
+
+
+def authenticate_user(db: Session, username_or_email: str, password: str) -> Optional[User]:
+    """Authenticate a user by username or email and password."""
+    # Try to find user by username first, then by email
+    user = db.query(User).filter(User.username == username_or_email).first()
+    if user is None:
+        # Try email
+        user = db.query(User).filter(User.email == username_or_email).first()
+    
     if user is None:
         return None
     
     if not verify_password(password, user.password_hash):
         return None
+    
+    # Check if email is verified
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email address before logging in. Check your inbox for the verification link."
+        )
     
     return user
 
@@ -204,7 +302,6 @@ def get_leaderboard(db: Session, limit: int = 10) -> list[LeaderboardEntry]:
         LeaderboardEntry(
             rank=i + 1,
             username=user.username,
-            display_name=user.display_name,
             arts_spotted=user.arts_spotted,
             verified_spots=user.verified_spots
         )
