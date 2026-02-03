@@ -513,6 +513,7 @@ function App() {
               onImageCapture={handleImageSelect}
               disabled={status === 'loading'}
               autoStart
+              onClose={() => setMode('select')}
             />
           </div>
         )}

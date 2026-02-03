@@ -1,15 +1,17 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import './CameraCapture.css';
 
-function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
+function CameraCapture({ onImageCapture, disabled, autoStart = false, onClose }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const hasAutoStartedRef = useRef(false);
-  
+
   const [isActive, setIsActive] = useState(false);
+  const [isStarting, setIsStarting] = useState(autoStart);
   const [error, setError] = useState(null);
   const [facingMode, setFacingMode] = useState('environment');
+  const [capturedImage, setCapturedImage] = useState(null);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -17,18 +19,20 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
       streamRef.current = null;
     }
     setIsActive(false);
+    setIsStarting(false);
   }, []);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (facingModeOverride) => {
     try {
       setError(null);
-      
+
       // Stop any existing stream
       stopCamera();
-      
+      setIsStarting(true);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: facingMode,
+          facingMode: facingModeOverride ?? facingMode,
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }
@@ -40,6 +44,7 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
         setIsActive(true);
+        setIsStarting(false);
       }
     } catch (err) {
       console.error('Camera error:', err);
@@ -51,6 +56,7 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
         setError('Unable to access camera. Please try again.');
       }
       setIsActive(false);
+      setIsStarting(false);
     }
   }, [facingMode, stopCamera]);
 
@@ -70,24 +76,40 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
     
     // Convert to blob
     canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
-        const preview = canvas.toDataURL('image/jpeg');
-        
-        onImageCapture({
-          file: file,
-          preview: preview
-        });
-        
-        // Stop camera after capture
-        stopCamera();
+      if (!blob) {
+        setError('Failed to capture image. Please try again.');
+        return;
       }
+
+      const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+      const preview = canvas.toDataURL('image/jpeg');
+
+      setCapturedImage({
+        file,
+        preview
+      });
+
+      // Stop camera after capture
+      stopCamera();
     }, 'image/jpeg', 0.9);
-  }, [onImageCapture, stopCamera]);
+  }, [stopCamera]);
+
+  const handleUpload = useCallback(() => {
+    if (!capturedImage) return;
+    onImageCapture(capturedImage);
+  }, [capturedImage, onImageCapture]);
+
+  const handleRetake = useCallback(() => {
+    setCapturedImage(null);
+    setError(null);
+    startCamera();
+  }, [startCamera]);
 
   const toggleFacingMode = useCallback(() => {
-    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
-  }, []);
+    const newMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(newMode);
+    startCamera(newMode);
+  }, [facingMode, startCamera]);
 
   // Auto-start when entering camera mode
   useEffect(() => {
@@ -96,13 +118,6 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
       startCamera();
     }
   }, [autoStart, startCamera]);
-
-  // Restart camera when facing mode changes
-  useEffect(() => {
-    if (isActive) {
-      startCamera();
-    }
-  }, [facingMode, isActive, startCamera]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -123,16 +138,33 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
     );
   }
 
-  if (!isActive) {
+  if (capturedImage) {
     return (
-      <button 
-        className="camera-start-button"
-        onClick={startCamera}
-        disabled={disabled}
-      >
-        <span className="camera-icon">📸</span>
-        <span className="camera-text">Open Camera</span>
-      </button>
+      <div className="camera-container">
+        <div className="camera-preview">
+          <img
+            src={capturedImage.preview}
+            alt="Captured artwork"
+            className="camera-preview-image"
+          />
+        </div>
+        <div className="camera-review-actions">
+          <button
+            className="camera-action-button upload-button"
+            onClick={handleUpload}
+            disabled={disabled}
+          >
+            Upload
+          </button>
+          <button
+            className="camera-action-button retake-button"
+            onClick={handleRetake}
+            disabled={disabled}
+          >
+            Retake
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -152,6 +184,23 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
           <div className="corner bottom-left"></div>
           <div className="corner bottom-right"></div>
         </div>
+        {!isActive && (
+          <div className="camera-placeholder">
+            <div className="camera-placeholder-icon">📷</div>
+            <p className="camera-placeholder-text">
+              {isStarting ? 'Starting camera...' : 'Camera ready. Tap Start to begin.'}
+            </p>
+            {!isStarting && (
+              <button
+                className="retry-button"
+                onClick={startCamera}
+                disabled={disabled}
+              >
+                Start Camera
+              </button>
+            )}
+          </div>
+        )}
       </div>
       
       <canvas ref={canvasRef} className="capture-canvas" />
@@ -161,6 +210,7 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
           className="camera-control-button flip-button"
           onClick={toggleFacingMode}
           title="Flip camera"
+          disabled={!isActive || isStarting}
         >
           🔄
         </button>
@@ -168,14 +218,19 @@ function CameraCapture({ onImageCapture, disabled, autoStart = false }) {
         <button 
           className="capture-button"
           onClick={captureImage}
-          disabled={disabled}
+          disabled={disabled || !isActive || isStarting}
         >
           <span className="capture-ring"></span>
         </button>
         
         <button 
           className="camera-control-button close-button"
-          onClick={stopCamera}
+          onClick={() => {
+            stopCamera();
+            if (onClose) {
+              onClose();
+            }
+          }}
           title="Close camera"
         >
           ✕

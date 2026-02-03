@@ -19,6 +19,30 @@
   object-fit: cover;
 }
 
+.camera-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.camera-placeholder-icon {
+  font-size: 2.5rem;
+}
+
+.camera-placeholder-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
 .viewfinder-overlay {
   position: absolute;
   inset: 0;
@@ -64,6 +88,62 @@
   display: none;
 }
 
+.camera-preview {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: #000;
+}
+
+.camera-preview-image {
+  width: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.camera-review-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.camera-action-button {
+  flex: 1;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.camera-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.upload-button {
+  border: none;
+  background: var(--accent-red);
+  color: white;
+}
+
+.upload-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.retake-button {
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.retake-button:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  border-color: var(--text-muted);
+}
+
 .camera-controls {
   display: flex;
   justify-content: center;
@@ -92,6 +172,11 @@
   border-color: var(--text-muted);
 }
 
+.camera-control-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .capture-button {
   width: 72px;
   height: 72px;
@@ -109,6 +194,15 @@
 
 .capture-button:active {
   transform: scale(0.95);
+}
+
+.capture-button:disabled {
+  border-color: var(--border-color);
+  cursor: not-allowed;
+}
+
+.capture-button:disabled .capture-ring {
+  background: var(--border-color);
 }
 
 .capture-ring {
