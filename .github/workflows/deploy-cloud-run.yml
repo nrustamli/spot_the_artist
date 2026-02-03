@@ -45,4 +45,9 @@ jobs:
             --allow-unauthenticated \
             --memory 4Gi \
             --cpu 2 \
-            --timeout 300
+            --timeout 300 \
+            --execution-environment gen2 \
+            --max-instances 1 \
+            --add-volume name=db-vol,type=cloud-storage,bucket=spot-the-artist-data \
+            --add-volume-mount volume=db-vol,mount-path=/mnt/data \
+            --set-env-vars DATABASE_DIR=/mnt/data
