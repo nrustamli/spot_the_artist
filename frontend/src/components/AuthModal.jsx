@@ -14,7 +14,11 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
   
-  const { login, register, resendVerification } = useAuth();
+  const { login, register, resendVerification, verifyEmail } = useAuth();
+  const [verificationToken, setVerificationToken] = useState('');
+  const [verifyTokenLoading, setVerifyTokenLoading] = useState(false);
+  const [verifyTokenError, setVerifyTokenError] = useState('');
+  const [showTokenPasteOnLogin, setShowTokenPasteOnLogin] = useState(false);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -22,6 +26,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
       setMode(initialMode);
       setVerificationSent(false);
       setResendSuccess(false);
+      setShowTokenPasteOnLogin(false);
     }
   }, [isOpen, initialMode]);
 
@@ -66,6 +71,24 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
     }
   };
 
+  const handleVerifyWithToken = async () => {
+    const token = verificationToken.trim();
+    if (!token) return;
+    setVerifyTokenLoading(true);
+    setVerifyTokenError('');
+    setError('');
+    try {
+      await verifyEmail(token);
+      setVerificationToken('');
+      onClose();
+      resetForm();
+    } catch (err) {
+      setVerifyTokenError(err.message);
+    } finally {
+      setVerifyTokenLoading(false);
+    }
+  };
+
   const resetForm = () => {
     setUsername('');
     setEmail('');
@@ -73,6 +96,8 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
     setVerificationSent(false);
     setVerificationEmail('');
     setResendSuccess(false);
+    setVerificationToken('');
+    setVerifyTokenError('');
   };
 
   const switchMode = () => {
@@ -107,6 +132,40 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
             <p className="auth-verification-note">
               Don't see it? Check your spam folder.
             </p>
+          </div>
+
+          <div className="auth-verification-token-section">
+            <p className="auth-verification-token-label">Have the verification token? Paste it here:</p>
+            <input
+              type="text"
+              className="auth-verification-token-input"
+              value={verificationToken}
+              onChange={(e) => {
+                setVerificationToken(e.target.value);
+                setVerifyTokenError('');
+              }}
+              placeholder="Paste token from email"
+              disabled={verifyTokenLoading}
+            />
+            <button
+              type="button"
+              className="auth-submit auth-verify-token-btn"
+              onClick={handleVerifyWithToken}
+              disabled={!verificationToken.trim() || verifyTokenLoading}
+            >
+              {verifyTokenLoading ? (
+                <span className="auth-loading">
+                  <span className="spinner"></span> Verifying...
+                </span>
+              ) : (
+                'Verify'
+              )}
+            </button>
+            {verifyTokenError && (
+              <div className="auth-error auth-verification-token-error">
+                <span>⚠️</span> {verifyTokenError}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -228,26 +287,75 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={mode === 'register' ? 'Create a password' : 'Enter password'}
-              required
+              required={!showTokenPasteOnLogin}
               minLength={6}
               disabled={loading}
             />
           </div>
 
-          <button 
-            type="submit" 
-            className="auth-submit"
-            disabled={loading}
-          >
-            {loading ? (
-              <span className="auth-loading">
-                <span className="spinner"></span>
-                {mode === 'login' ? 'Signing in...' : 'Creating account...'}
-              </span>
-            ) : (
-              mode === 'login' ? 'Sign In' : 'Create Account'
-            )}
-          </button>
+          {mode === 'login' && (
+            <>
+              <button
+                type="button"
+                className="auth-link-button"
+                onClick={() => setShowTokenPasteOnLogin((v) => !v)}
+                disabled={loading}
+              >
+                {showTokenPasteOnLogin ? 'Hide' : 'Have a verification token? Paste it here'}
+              </button>
+              {showTokenPasteOnLogin && (
+                <div className="auth-verification-token-section auth-verification-token-inline">
+                  <input
+                    type="text"
+                    className="auth-verification-token-input"
+                    value={verificationToken}
+                    onChange={(e) => {
+                      setVerificationToken(e.target.value);
+                      setVerifyTokenError('');
+                    }}
+                    placeholder="Paste token from email"
+                    disabled={verifyTokenLoading}
+                  />
+                  <button
+                    type="button"
+                    className="auth-submit auth-verify-token-btn"
+                    onClick={handleVerifyWithToken}
+                    disabled={!verificationToken.trim() || verifyTokenLoading}
+                  >
+                    {verifyTokenLoading ? (
+                      <span className="auth-loading">
+                        <span className="spinner"></span> Verifying...
+                      </span>
+                    ) : (
+                      'Verify'
+                    )}
+                  </button>
+                  {verifyTokenError && (
+                    <div className="auth-error auth-verification-token-error">
+                      <span>⚠️</span> {verifyTokenError}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {!showTokenPasteOnLogin && (
+            <button 
+              type="submit" 
+              className="auth-submit"
+              disabled={loading}
+            >
+              {loading ? (
+                <span className="auth-loading">
+                  <span className="spinner"></span>
+                  {mode === 'login' ? 'Signing in...' : 'Creating account...'}
+                </span>
+              ) : (
+                mode === 'login' ? 'Sign In' : 'Create Account'
+              )}
+            </button>
+          )}
         </form>
 
         <div className="auth-switch">
