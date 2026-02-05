@@ -1,28 +1,43 @@
 steps:
-  # Build and deploy to Cloud Run
+  # Build with Kaniko (caches all Docker layers)
+  - name: 'gcr.io/kaniko-project/executor:latest'
+    args:
+      - '--dockerfile=Dockerfile'
+      - '--destination=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'
+      - '--destination=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest'
+      - '--cache=true'
+      - '--cache-ttl=168h'
+      - '--cache-repo=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/cache'
+      - '--snapshot-mode=redo'
+      - '--use-new-run'
+
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
       - 'spot-the-artist'
-      - '--source'
-      - '.'
-      - '--region'
-      - 'europe-west1'
-      - '--platform'
-      - 'managed'
+      - '--image=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'
+      - '--region=europe-west1'
+      - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--memory'
-      - '4Gi'
-      - '--cpu'
-      - '2'
-      - '--timeout'
-      - '300'
+      - '--memory=4Gi'
+      - '--cpu=2'
+      - '--timeout=300'
+      - '--execution-environment=gen2'
+      - '--max-instances=1'
+      - '--add-volume=name=db-vol,type=cloud-storage,bucket=spot-the-artist-data'
+      - '--add-volume-mount=volume=db-vol,mount-path=/mnt/data'
+      - '--set-env-vars=DATABASE_DIR=/mnt/data'
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
   diskSizeGb: 100
 
-timeout: '1800s'  # 30 minutes max (CLIP model download takes time)
+timeout: '1800s'
