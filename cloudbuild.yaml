@@ -1,15 +1,26 @@
 steps:
-  # Build with Kaniko (caches all Docker layers)
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  # Pull previous image for cache (ignore if doesn't exist)
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
     args:
-      - '--dockerfile=Dockerfile'
-      - '--destination=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'
-      - '--destination=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest'
-      - '--cache=true'
-      - '--cache-ttl=168h'
-      - '--cache-repo=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/cache'
-      - '--snapshot-mode=redo'
-      - '--use-new-run'
+      - '-c'
+      - 'docker pull europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest || true'
+
+  # Build with Docker using cache from previous image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--cache-from=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest'
+      - '-t=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'
+      - '-t=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest'
+      - '.'
+
+  # Push images to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
