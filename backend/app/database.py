@@ -10,7 +10,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
 # Database URL - use SQLite file in data directory
-DATABASE_DIR = os.environ.get("DATABASE_DIR", "data")
+# Cloud Run has a read-only filesystem except for /tmp
+# Detect Cloud Run via K_SERVICE env var (set automatically by Cloud Run)
+if os.environ.get("K_SERVICE"):
+    # Running in Cloud Run - use /tmp for writable database
+    DATABASE_DIR = "/tmp/data"
+else:
+    DATABASE_DIR = os.environ.get("DATABASE_DIR", "data")
+
 os.makedirs(DATABASE_DIR, exist_ok=True)
 DATABASE_URL = f"sqlite:///{DATABASE_DIR}/spot_the_artist.db"
 
