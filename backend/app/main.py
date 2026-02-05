@@ -12,10 +12,10 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from PIL import Image
@@ -23,10 +23,8 @@ from PIL import Image
 from .database import init_db, get_db, User
 from .auth import (
     UserCreate, UserLogin, UserResponse, TokenResponse, LeaderboardEntry,
-    VerifyEmailRequest, ResendVerificationRequest,
     register_user, authenticate_user, create_token, revoke_token,
     get_current_user, get_optional_user, get_leaderboard,
-    verify_user_email, resend_verification_email
 )
 from .gallery_service import (
     GalleryImageCreate, GalleryImageResponse, GalleryListResponse,
@@ -124,6 +122,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Global exception handler to always return JSON errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and return them as JSON."""
+    import traceback
+    print(f"❌ Unhandled exception: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)}
+    )
 
 
 @app.get("/api/health", response_model=HealthResponse, tags=["System"])
@@ -224,62 +235,24 @@ async def verify_artwork(file: UploadFile = File(...)):
 # Authentication Endpoints
 # =============================================================================
 
-class RegisterResponse(BaseModel):
-    """Response model for registration (no token until verified)."""
-    message: str
-    email: str
-    requires_verification: bool = True
-
-
-@app.post("/api/auth/register", response_model=RegisterResponse, tags=["Authentication"])
+@app.post("/api/auth/register", response_model=TokenResponse, tags=["Authentication"])
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """
     Register a new user account.
-    
+
     - Username must be 3-50 characters (letters, numbers, underscores only)
     - Email must be a valid email address
     - Password must be at least 6 characters
-    
-    A verification email will be sent to the provided email address.
-    The user must verify their email before logging in.
+
+    Returns an auth token to log the user in immediately.
     """
     user = await register_user(db, user_data)
-    
-    return RegisterResponse(
-        message="Account created! Please check your email to verify your account.",
-        email=user.email,
-        requires_verification=True
-    )
-
-
-@app.post("/api/auth/verify-email", response_model=TokenResponse, tags=["Authentication"])
-async def verify_email(request: VerifyEmailRequest, db: Session = Depends(get_db)):
-    """
-    Verify email address using the token sent via email.
-    
-    After successful verification, returns an auth token to log the user in.
-    """
-    user = verify_user_email(db, request.token)
     token = create_token(user.id)
-    
+
     return TokenResponse(
         access_token=token,
         user=UserResponse.model_validate(user)
     )
-
-
-@app.post("/api/auth/resend-verification", tags=["Authentication"])
-async def resend_verification(request: ResendVerificationRequest, db: Session = Depends(get_db)):
-    """
-    Resend verification email.
-    
-    Use this if the original verification email was not received or the link expired.
-    """
-    await resend_verification_email(db, request.email)
-    
-    return {
-        "message": "If an account with this email exists and is not yet verified, a new verification email has been sent."
-    }
 
 
 @app.post("/api/auth/login", response_model=TokenResponse, tags=["Authentication"])

@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
 
 from .database import get_db, User
-from .email_service import generate_verification_token, send_verification_email
 
 # Simple token storage (in production, use Redis or JWT)
 # Format: {token: {"user_id": id, "expires": datetime}}
@@ -55,16 +54,6 @@ class UserResponse(BaseModel):
     
     class Config:
         from_attributes = True
-
-
-class VerifyEmailRequest(BaseModel):
-    """Request model for email verification."""
-    token: str
-
-
-class ResendVerificationRequest(BaseModel):
-    """Request model for resending verification email."""
-    email: EmailStr
 
 
 class TokenResponse(BaseModel):
@@ -173,7 +162,7 @@ async def get_optional_user(
 
 # Auth service functions
 async def register_user(db: Session, user_data: UserCreate) -> User:
-    """Register a new user and send verification email."""
+    """Register a new user (no email verification required)."""
     # Check if username already exists
     existing = db.query(User).filter(User.username == user_data.username).first()
     if existing:
@@ -181,7 +170,7 @@ async def register_user(db: Session, user_data: UserCreate) -> User:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already taken"
         )
-    
+
     # Check if email already exists
     existing_email = db.query(User).filter(User.email == user_data.email).first()
     if existing_email:
@@ -189,85 +178,21 @@ async def register_user(db: Session, user_data: UserCreate) -> User:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
-    # Generate verification token
-    token, expires = generate_verification_token()
-    
-    # Create new user
+
+    # Create new user (email verified by default)
     user = User(
         username=user_data.username,
         email=user_data.email,
         password_hash=hash_password(user_data.password),
-        email_verified=False,
-        verification_token=token,
-        verification_token_expires=expires
+        email_verified=True,
+        verification_token=None,
+        verification_token_expires=None
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    
-    # Send verification email (non-blocking)
-    await send_verification_email(user.email, user.username, token)
-    
+
     return user
-
-
-def verify_user_email(db: Session, token: str) -> User:
-    """Verify a user's email using the verification token."""
-    user = db.query(User).filter(User.verification_token == token).first()
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid verification token"
-        )
-    
-    if user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already verified"
-        )
-    
-    if user.verification_token_expires and datetime.utcnow() > user.verification_token_expires:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Verification token has expired. Please request a new one."
-        )
-    
-    # Mark email as verified
-    user.email_verified = True
-    user.verification_token = None
-    user.verification_token_expires = None
-    db.commit()
-    db.refresh(user)
-    
-    return user
-
-
-async def resend_verification_email(db: Session, email: str) -> bool:
-    """Resend verification email to a user."""
-    user = db.query(User).filter(User.email == email).first()
-    
-    if not user:
-        # Don't reveal if email exists
-        return True
-    
-    if user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already verified"
-        )
-    
-    # Generate new token
-    token, expires = generate_verification_token()
-    user.verification_token = token
-    user.verification_token_expires = expires
-    db.commit()
-    
-    # Send email
-    await send_verification_email(user.email, user.username, token)
-    
-    return True
 
 
 def authenticate_user(db: Session, username_or_email: str, password: str) -> Optional[User]:
@@ -277,20 +202,13 @@ def authenticate_user(db: Session, username_or_email: str, password: str) -> Opt
     if user is None:
         # Try email
         user = db.query(User).filter(User.email == username_or_email).first()
-    
+
     if user is None:
         return None
-    
+
     if not verify_password(password, user.password_hash):
         return None
-    
-    # Check if email is verified
-    if not user.email_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email address before logging in. Check your inbox for the verification link."
-        )
-    
+
     return user
 
 

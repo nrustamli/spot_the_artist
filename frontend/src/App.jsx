@@ -14,11 +14,7 @@ import './App.css';
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 function App() {
-  const { user, isAuthenticated, token, refreshUser, verifyEmail } = useAuth();
-  
-  // Email verification state
-  const [emailVerificationStatus, setEmailVerificationStatus] = useState(null); // null, 'verifying', 'success', 'error'
-  const [emailVerificationMessage, setEmailVerificationMessage] = useState('');
+  const { user, isAuthenticated, token, refreshUser } = useAuth();
   
   const [mode, setMode] = useState('select'); // 'select', 'camera', 'upload'
   const [status, setStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
@@ -181,28 +177,6 @@ function App() {
     }
   }, [isAuthenticated, activePage]);
 
-  // Handle email verification from URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const verificationToken = params.get('token');
-    const isVerifyPage = window.location.pathname === '/verify-email';
-    
-    if (isVerifyPage && verificationToken) {
-      setEmailVerificationStatus('verifying');
-      
-      verifyEmail(verificationToken)
-        .then(() => {
-          setEmailVerificationStatus('success');
-          setEmailVerificationMessage('Your email has been verified! You are now logged in.');
-          // Clean up URL
-          window.history.replaceState({}, '', '/');
-        })
-        .catch((err) => {
-          setEmailVerificationStatus('error');
-          setEmailVerificationMessage(err.message || 'Verification failed. Please try again.');
-        });
-    }
-  }, [verifyEmail]);
 
   const loadMoreGallery = useCallback(() => {
     if (!galleryLoading && hasMore) {
@@ -533,42 +507,6 @@ function App() {
     );
   };
 
-  // Render email verification banner
-  const renderVerificationBanner = () => {
-    if (!emailVerificationStatus) return null;
-    
-    if (emailVerificationStatus === 'verifying') {
-      return (
-        <div className="verification-banner verification-loading">
-          <span className="verification-spinner"></span>
-          Verifying your email...
-        </div>
-      );
-    }
-    
-    if (emailVerificationStatus === 'success') {
-      return (
-        <div className="verification-banner verification-success">
-          <span>✅</span>
-          {emailVerificationMessage}
-          <button onClick={() => setEmailVerificationStatus(null)}>×</button>
-        </div>
-      );
-    }
-    
-    if (emailVerificationStatus === 'error') {
-      return (
-        <div className="verification-banner verification-error">
-          <span>❌</span>
-          {emailVerificationMessage}
-          <button onClick={() => setEmailVerificationStatus(null)}>×</button>
-        </div>
-      );
-    }
-    
-    return null;
-  };
-
   return (
     <div className="app">
       <Header
@@ -576,7 +514,6 @@ function App() {
         onMyGalleryClick={openMyGallery}
         onExploreClick={openExploreGallery}
       />
-      {renderVerificationBanner()}
       <main className="main-content">
         {renderContent()}
       </main>

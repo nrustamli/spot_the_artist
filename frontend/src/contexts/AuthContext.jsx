@@ -6,6 +6,18 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 const TOKEN_KEY = 'spot_the_artist_token';
 const USER_KEY = 'spot_the_artist_user';
 
+// Helper to safely parse error responses (handles both JSON and plain text)
+async function parseErrorResponse(response) {
+  const text = await response.text();
+  try {
+    const json = JSON.parse(text);
+    return json.detail || json.message || 'An error occurred';
+  } catch {
+    // Response was not JSON (e.g., "Internal Server Error")
+    return text || `Error ${response.status}`;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
@@ -58,8 +70,8 @@ export function AuthProvider({ children }) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Login failed');
+      const errorMessage = await parseErrorResponse(response);
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -78,7 +90,7 @@ export function AuthProvider({ children }) {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true',
       },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         username,
         email,
         password
@@ -86,60 +98,18 @@ export function AuthProvider({ children }) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Registration failed');
+      const errorMessage = await parseErrorResponse(response);
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    // Registration now requires email verification
-    // Return the response so the UI can show verification message
-    return {
-      requiresVerification: true,
-      email: data.email,
-      message: data.message
-    };
-  }, []);
-
-  const verifyEmail = useCallback(async (token) => {
-    const response = await fetch(`${API_URL}/api/auth/verify-email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      },
-      body: JSON.stringify({ token }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Verification failed');
-    }
-
-    const data = await response.json();
+    // Registration returns a token - log the user in immediately
     setToken(data.access_token);
     setUser(data.user);
     localStorage.setItem(TOKEN_KEY, data.access_token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-    
+
     return data.user;
-  }, []);
-
-  const resendVerification = useCallback(async (email) => {
-    const response = await fetch(`${API_URL}/api/auth/resend-verification`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to resend verification');
-    }
-
-    return await response.json();
   }, []);
 
   const logout = useCallback(() => {
@@ -179,8 +149,6 @@ export function AuthProvider({ children }) {
     register,
     logout,
     refreshUser,
-    verifyEmail,
-    resendVerification,
   };
 
   return (
