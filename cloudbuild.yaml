@@ -40,7 +40,8 @@ steps:
       - '--max-instances=1'
       - '--add-volume=name=db-vol,type=cloud-storage,bucket=spot-the-artist-data'
       - '--add-volume-mount=volume=db-vol,mount-path=/mnt/data'
-      - '--set-env-vars=DATABASE_DIR=/mnt/data'
+      - '--set-env-vars=DATABASE_DIR=/mnt/data,APP_URL=https://spot-the-artist-dkdoq6j4wa-ew.a.run.app'
+      - '--set-secrets=SENDGRID_API_KEY=sendgrid-api-key:latest'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'

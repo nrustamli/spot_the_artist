@@ -1,21 +1,17 @@
 """
-Email service for sending verification emails.
-Supports SMTP (Gmail, etc.) via environment variables.
+Email service for sending verification emails using SendGrid.
 """
 
 import os
 import secrets
 from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import aiosmtplib
 
-# Email configuration from environment variables
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # Use App Password for Gmail
-FROM_EMAIL = os.environ.get("FROM_EMAIL", SMTP_USER)
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, To, Content, HtmlContent
+
+# SendGrid configuration
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@spottheartist.com")
 FROM_NAME = os.environ.get("FROM_NAME", "Spot the Artist")
 
 # App URL for verification links
@@ -32,15 +28,10 @@ def generate_verification_token() -> tuple[str, datetime]:
     return token, expires
 
 
-def create_verification_email(to_email: str, username: str, token: str) -> MIMEMultipart:
-    """Create a verification email with HTML content."""
+def create_email_content(to_email: str, username: str, token: str) -> tuple[str, str]:
+    """Create plain text and HTML content for verification email."""
     verification_link = f"{APP_URL}/verify-email?token={token}"
-    
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Verify your Spot the Artist account"
-    msg["From"] = f"{FROM_NAME} <{FROM_EMAIL}>"
-    msg["To"] = to_email
-    
+
     # Plain text version
     text_content = f"""
 Hi {username}!
@@ -56,7 +47,7 @@ If you didn't create an account, you can safely ignore this email.
 Happy art hunting!
 The Spot the Artist Team
 """
-    
+
     # HTML version
     html_content = f"""
 <!DOCTYPE html>
@@ -72,7 +63,7 @@ The Spot the Artist Team
                 <table width="100%" cellpadding="0" cellspacing="0">
                     <tr>
                         <td style="text-align: center; padding-bottom: 30px;">
-                            <h1 style="margin: 0; font-size: 28px; color: #1a1a1a;">✨ Welcome to Spot the Artist!</h1>
+                            <h1 style="margin: 0; font-size: 28px; color: #1a1a1a;">Welcome to Spot the Artist!</h1>
                         </td>
                     </tr>
                     <tr>
@@ -91,7 +82,7 @@ The Spot the Artist Team
                     </tr>
                     <tr>
                         <td style="text-align: center; padding-bottom: 30px;">
-                            <a href="{verification_link}" 
+                            <a href="{verification_link}"
                                style="display: inline-block; background-color: #e53935; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 16px; font-weight: 600;">
                                 Verify My Email
                             </a>
@@ -120,7 +111,7 @@ The Spot the Artist Team
         <tr>
             <td style="text-align: center; padding-top: 20px;">
                 <p style="margin: 0; font-size: 13px; color: #999;">
-                    Made with ❤️ for street art lovers
+                    Made with love for street art lovers
                 </p>
             </td>
         </tr>
@@ -128,39 +119,42 @@ The Spot the Artist Team
 </body>
 </html>
 """
-    
-    msg.attach(MIMEText(text_content, "plain"))
-    msg.attach(MIMEText(html_content, "html"))
-    
-    return msg
+
+    return text_content, html_content
 
 
 async def send_verification_email(to_email: str, username: str, token: str) -> bool:
     """
-    Send a verification email to the user.
+    Send a verification email to the user using SendGrid.
     Returns True if sent successfully, False otherwise.
     """
-    if not SMTP_USER or not SMTP_PASSWORD:
-        print("⚠️  Email not configured - SMTP_USER and SMTP_PASSWORD required")
+    if not SENDGRID_API_KEY:
+        print("⚠️  Email not configured - SENDGRID_API_KEY required")
         print(f"   Would have sent verification email to: {to_email}")
         print(f"   Token: {token}")
         return False
-    
+
     try:
-        msg = create_verification_email(to_email, username, token)
-        
-        await aiosmtplib.send(
-            msg,
-            hostname=SMTP_HOST,
-            port=SMTP_PORT,
-            username=SMTP_USER,
-            password=SMTP_PASSWORD,
-            start_tls=True,
+        text_content, html_content = create_email_content(to_email, username, token)
+
+        message = Mail(
+            from_email=(FROM_EMAIL, FROM_NAME),
+            to_emails=to_email,
+            subject="Verify your Spot the Artist account",
+            plain_text_content=text_content,
+            html_content=html_content
         )
-        
-        print(f"✅ Verification email sent to: {to_email}")
-        return True
-        
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(message)
+
+        if response.status_code >= 200 and response.status_code < 300:
+            print(f"✅ Verification email sent to: {to_email} (status: {response.status_code})")
+            return True
+        else:
+            print(f"❌ SendGrid returned status {response.status_code}")
+            return False
+
     except Exception as e:
         print(f"❌ Failed to send email: {e}")
         return False
@@ -168,4 +162,4 @@ async def send_verification_email(to_email: str, username: str, token: str) -> b
 
 def is_email_configured() -> bool:
     """Check if email sending is properly configured."""
-    return bool(SMTP_USER and SMTP_PASSWORD)
+    return bool(SENDGRID_API_KEY)
