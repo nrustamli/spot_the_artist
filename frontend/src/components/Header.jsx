@@ -17,15 +17,19 @@ function Header({ onLoginClick, onMyGalleryClick, onExploreClick }) {
       <div className="logo-section">
         <div className="logo-container">
           {/* Logo image - replace src with your SVG path */}
-          <img 
-            src="/logo-lips.svg" 
-            alt="Anna Laurini" 
+          <img
+            src="/logo-lips.svg"
+            alt="Anna Laurini"
             className="logo-lips"
+            onClick={() => window.location.reload()}
+            style={{ cursor: 'pointer' }}
           />
-          <img 
-            src="/logo-text.svg" 
-            alt="Anna Laurini" 
+          <img
+            src="/logo-text.svg"
+            alt="Anna Laurini"
             className="logo-text-image"
+            onClick={() => window.location.reload()}
+            style={{ cursor: 'pointer' }}
           />
         </div>
       </div>
