@@ -11,6 +11,12 @@ steps:
     args:
       - 'build'
       - '--cache-from=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest'
+      - '--build-arg=VITE_FIREBASE_API_KEY=AIzaSyDG1hAQuNNiirV3H-ysjY0Kn3Mi2cX4IU0'
+      - '--build-arg=VITE_FIREBASE_AUTH_DOMAIN=spot-the-artist.firebaseapp.com'
+      - '--build-arg=VITE_FIREBASE_PROJECT_ID=spot-the-artist'
+      - '--build-arg=VITE_FIREBASE_STORAGE_BUCKET=spot-the-artist.firebasestorage.app'
+      - '--build-arg=VITE_FIREBASE_MESSAGING_SENDER_ID=642692257276'
+      - '--build-arg=VITE_FIREBASE_APP_ID=1:642692257276:web:3c6f1075d112703b058e79'
       - '-t=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'
       - '-t=europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:latest'
       - '.'
@@ -38,10 +44,9 @@ steps:
       - '--timeout=300'
       - '--execution-environment=gen2'
       - '--max-instances=1'
-      - '--add-volume=name=db-vol,type=cloud-storage,bucket=spot-the-artist-data'
-      - '--add-volume-mount=volume=db-vol,mount-path=/mnt/data'
-      - '--set-env-vars=DATABASE_DIR=/mnt/data,APP_URL=https://spot-the-artist-dkdoq6j4wa-ew.a.run.app'
-      - '--set-secrets=SENDGRID_API_KEY=sendgrid-api-key:latest'
+      - '--set-env-vars=APP_URL=https://spot-the-artist-dkdoq6j4wa-ew.a.run.app'
+      - '--set-secrets=FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account-json:latest'
+      - '--remove-volumes'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'

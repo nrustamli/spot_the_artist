@@ -6,6 +6,14 @@ FROM node:20-slim AS frontend-builder
 
 WORKDIR /app/frontend
 
+# Firebase config build args (public values, baked into JS bundle by Vite)
+ARG VITE_FIREBASE_API_KEY
+ARG VITE_FIREBASE_AUTH_DOMAIN
+ARG VITE_FIREBASE_PROJECT_ID
+ARG VITE_FIREBASE_STORAGE_BUCKET
+ARG VITE_FIREBASE_MESSAGING_SENDER_ID
+ARG VITE_FIREBASE_APP_ID
+
 # Copy package files
 COPY frontend/package*.json ./
 
@@ -15,7 +23,7 @@ RUN npm ci
 # Copy frontend source
 COPY frontend/ ./
 
-# Build production bundle
+# Build production bundle (Vite reads VITE_* from env at build time)
 RUN npm run build
 
 # Stage 2: Python runtime
@@ -47,7 +55,6 @@ RUN python -c "from transformers import CLIPModel, CLIPProcessor; \
 # Copy backend source
 COPY backend/app ./app
 COPY backend/reference_art ./reference_art
-COPY backend/data ./data
 
 # Copy built frontend from previous stage
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
