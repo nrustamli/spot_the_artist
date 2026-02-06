@@ -46,3 +46,6 @@ htmlcov/
 
 api-key
 api-key-sg
+
+# Firebase
+*service-account*.json

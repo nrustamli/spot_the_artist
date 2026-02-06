@@ -1,66 +1,56 @@
 """
 Authentication utilities for Spot the Artist.
-Simple token-based auth with bcrypt password hashing.
+Uses Firebase Admin SDK to verify ID tokens from the frontend.
+User records stored in Cloud Firestore.
 """
 
 import os
-import hashlib
-import secrets
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
-from functools import lru_cache
 
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth, firestore
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, EmailStr
-from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
-from .database import get_db, User
+from .database import get_db
 
-# Simple token storage (in production, use Redis or JWT)
-# Format: {token: {"user_id": id, "expires": datetime}}
-active_tokens: dict = {}
+# Initialize Firebase Admin SDK
+# Priority: 1) FIREBASE_SERVICE_ACCOUNT_JSON env var (inline JSON, for Cloud Run)
+#           2) GOOGLE_APPLICATION_CREDENTIALS env var (file path)
+#           3) Auto-detect firebase-service-account.json in backend/ directory
+#           4) Default credentials (GCP environments)
+if not firebase_admin._apps:
+    service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    local_key_path = Path(__file__).parent.parent / "firebase-service-account.json"
+
+    if service_account_json:
+        cred = credentials.Certificate(json.loads(service_account_json))
+        firebase_admin.initialize_app(cred)
+    elif os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        firebase_admin.initialize_app()
+    elif local_key_path.exists():
+        cred = credentials.Certificate(str(local_key_path))
+        firebase_admin.initialize_app(cred)
+    else:
+        firebase_admin.initialize_app()
 
 # Security
 security = HTTPBearer(auto_error=False)
 
-# Token expiration (7 days)
-TOKEN_EXPIRATION_DAYS = 7
 
-
-# Pydantic models for requests/responses
-class UserCreate(BaseModel):
-    """Request model for user registration."""
-    username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_]+$")
-    email: EmailStr = Field(..., description="Valid email address for verification")
-    password: str = Field(..., min_length=6, max_length=100)
-
-
-class UserLogin(BaseModel):
-    """Request model for user login."""
-    username: str
-    password: str
-
-
+# Pydantic models
 class UserResponse(BaseModel):
     """Response model for user data."""
-    id: int
+    id: str
     username: str
     email: str
-    email_verified: bool
     arts_spotted: int
     verified_spots: int
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class TokenResponse(BaseModel):
-    """Response model for authentication token."""
-    access_token: str
-    token_type: str = "bearer"
-    user: UserResponse
 
 
 class LeaderboardEntry(BaseModel):
@@ -71,53 +61,43 @@ class LeaderboardEntry(BaseModel):
     verified_spots: int
 
 
-def hash_password(password: str) -> str:
-    """Hash a password using SHA-256 with salt."""
-    # In production, use bcrypt - keeping it simple here without extra dependencies
-    salt = os.environ.get("PASSWORD_SALT", "spot_the_artist_2024")
-    return hashlib.sha256(f"{password}{salt}".encode()).hexdigest()
+def verify_firebase_token(token: str) -> dict:
+    """Verify a Firebase ID token and return the decoded claims."""
+    try:
+        return firebase_auth.verify_id_token(token)
+    except Exception:
+        return None
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
-    return hash_password(plain_password) == hashed_password
+def get_or_create_user(uid: str, email: str, username: str) -> dict:
+    """Look up a user by Firebase UID, creating a new record if needed."""
+    db = get_db()
+    user_ref = db.collection("users").document(uid)
+    user_doc = user_ref.get()
 
+    if user_doc.exists:
+        data = user_doc.to_dict()
+        data["id"] = uid
+        return data
 
-def create_token(user_id: int) -> str:
-    """Create a new authentication token for a user."""
-    token = secrets.token_urlsafe(32)
-    active_tokens[token] = {
-        "user_id": user_id,
-        "expires": datetime.utcnow() + timedelta(days=TOKEN_EXPIRATION_DAYS)
+    # Create new user document
+    now = datetime.utcnow()
+    user_data = {
+        "username": username,
+        "email": email,
+        "created_at": now,
+        "arts_spotted": 0,
+        "verified_spots": 0,
     }
-    return token
+    user_ref.set(user_data)
 
-
-def verify_token(token: str) -> Optional[int]:
-    """Verify a token and return the user_id if valid."""
-    if token not in active_tokens:
-        return None
-    
-    token_data = active_tokens[token]
-    if datetime.utcnow() > token_data["expires"]:
-        del active_tokens[token]
-        return None
-    
-    return token_data["user_id"]
-
-
-def revoke_token(token: str) -> bool:
-    """Revoke/invalidate a token."""
-    if token in active_tokens:
-        del active_tokens[token]
-        return True
-    return False
+    user_data["id"] = uid
+    return user_data
 
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
+) -> dict:
     """FastAPI dependency to get the current authenticated user."""
     if credentials is None:
         raise HTTPException(
@@ -125,104 +105,53 @@ async def get_current_user(
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    user_id = verify_token(credentials.credentials)
-    if user_id is None:
+
+    decoded = verify_firebase_token(credentials.credentials)
+    if decoded is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    return user
+
+    uid = decoded["uid"]
+    email = decoded.get("email", "")
+    username = decoded.get("name", email.split("@")[0] if email else uid[:8])
+
+    return get_or_create_user(uid, email, username)
 
 
 async def get_optional_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> Optional[User]:
+) -> Optional[dict]:
     """FastAPI dependency to optionally get the current user (doesn't require auth)."""
     if credentials is None:
         return None
-    
-    user_id = verify_token(credentials.credentials)
-    if user_id is None:
-        return None
-    
-    return db.query(User).filter(User.id == user_id).first()
 
-
-# Auth service functions
-async def register_user(db: Session, user_data: UserCreate) -> User:
-    """Register a new user (no email verification required)."""
-    # Check if username already exists
-    existing = db.query(User).filter(User.username == user_data.username).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken"
-        )
-
-    # Check if email already exists
-    existing_email = db.query(User).filter(User.email == user_data.email).first()
-    if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-
-    # Create new user (email verified by default)
-    user = User(
-        username=user_data.username,
-        email=user_data.email,
-        password_hash=hash_password(user_data.password),
-        email_verified=True,
-        verification_token=None,
-        verification_token_expires=None
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    return user
-
-
-def authenticate_user(db: Session, username_or_email: str, password: str) -> Optional[User]:
-    """Authenticate a user by username or email and password."""
-    # Try to find user by username first, then by email
-    user = db.query(User).filter(User.username == username_or_email).first()
-    if user is None:
-        # Try email
-        user = db.query(User).filter(User.email == username_or_email).first()
-
-    if user is None:
+    decoded = verify_firebase_token(credentials.credentials)
+    if decoded is None:
         return None
 
-    if not verify_password(password, user.password_hash):
-        return None
+    uid = decoded["uid"]
+    email = decoded.get("email", "")
+    username = decoded.get("name", email.split("@")[0] if email else uid[:8])
 
-    return user
+    return get_or_create_user(uid, email, username)
 
 
-def get_leaderboard(db: Session, limit: int = 10) -> list[LeaderboardEntry]:
+def get_leaderboard(limit: int = 10) -> list[LeaderboardEntry]:
     """Get the top users by arts_spotted."""
-    users = db.query(User).order_by(User.arts_spotted.desc()).limit(limit).all()
-    
+    db = get_db()
+    users_ref = db.collection("users")
+    query = users_ref.order_by("arts_spotted", direction=firestore.Query.DESCENDING).limit(limit)
+    docs = query.stream()
+
     return [
         LeaderboardEntry(
             rank=i + 1,
-            username=user.username,
-            arts_spotted=user.arts_spotted,
-            verified_spots=user.verified_spots
+            username=doc.to_dict().get("username", "Unknown"),
+            arts_spotted=doc.to_dict().get("arts_spotted", 0),
+            verified_spots=doc.to_dict().get("verified_spots", 0),
         )
-        for i, user in enumerate(users)
+        for i, doc in enumerate(docs)
     ]
-

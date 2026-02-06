@@ -56,7 +56,7 @@ function Gallery({
 
   // Check if current user can delete an item
   const canDelete = (item) => {
-    return isAuthenticated && user && user.id === item.userId;
+    return isAuthenticated && user && user.uid === item.userId;
   };
 
   // Format date to DD.MM.YYYY

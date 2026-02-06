@@ -2,6 +2,25 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import './AuthModal.css';
 
+function getFirebaseErrorMessage(error) {
+  switch (error.code) {
+    case 'auth/email-already-in-use':
+      return 'This email is already registered';
+    case 'auth/invalid-email':
+      return 'Invalid email address';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Invalid email or password';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later';
+    default:
+      return error.message || 'An error occurred';
+  }
+}
+
 function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
   const [mode, setMode] = useState(initialMode);
   const [username, setUsername] = useState('');
@@ -28,14 +47,14 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
 
     try {
       if (mode === 'login') {
-        await login(username, password);
+        await login(email, password);
       } else {
         await register(username, email, password);
       }
       onClose();
       resetForm();
     } catch (err) {
-      setError(err.message);
+      setError(getFirebaseErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -61,7 +80,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
     <div className="auth-modal-overlay" onClick={handleClose}>
       <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
         <button className="auth-close" onClick={handleClose}>×</button>
-        
+
         <div className="auth-header">
           <div className="auth-icon">
             {mode === 'login' ? '🔐' : '✨'}
@@ -70,7 +89,7 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
             {mode === 'login' ? 'Welcome Back' : 'Join the Hunt'}
           </h2>
           <p className="auth-subtitle">
-            {mode === 'login' 
+            {mode === 'login'
               ? 'Sign in to save your discoveries'
               : 'Create an account to track your art finds'
             }
@@ -85,51 +104,37 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
             </div>
           )}
 
-          {mode === 'login' ? (
+          {mode === 'register' && (
             <div className="auth-field">
-              <label htmlFor="username">Username or Email</label>
+              <label htmlFor="username">Username</label>
               <input
                 type="text"
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username or email"
+                placeholder="Choose a username"
                 required
+                minLength={3}
+                maxLength={50}
+                pattern="^[a-zA-Z0-9_]+$"
+                title="Letters, numbers, and underscores only"
                 disabled={loading}
               />
             </div>
-          ) : (
-            <>
-              <div className="auth-field">
-                <label htmlFor="username">Username</label>
-                <input
-                  type="text"
-                  id="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Choose a username"
-                  required
-                  minLength={3}
-                  maxLength={50}
-                  pattern="^[a-zA-Z0-9_]+$"
-                  title="Letters, numbers, and underscores only"
-                  disabled={loading}
-                />
-              </div>
-              <div className="auth-field">
-                <label htmlFor="email">Email</label>
-                <input
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </>
           )}
+
+          <div className="auth-field">
+            <label htmlFor="email">Email</label>
+            <input
+              type="email"
+              id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              required
+              disabled={loading}
+            />
+          </div>
 
           <div className="auth-field">
             <label htmlFor="password">Password</label>
@@ -184,4 +189,3 @@ function AuthModal({ isOpen, onClose, initialMode = 'login' }) {
 }
 
 export default AuthModal;
-

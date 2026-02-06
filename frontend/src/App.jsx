@@ -14,7 +14,7 @@ import './App.css';
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 function App() {
-  const { user, isAuthenticated, token, refreshUser } = useAuth();
+  const { user, isAuthenticated, getIdToken, refreshUser } = useAuth();
   
   const [mode, setMode] = useState('select'); // 'select', 'camera', 'upload'
   const [status, setStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
@@ -157,10 +157,10 @@ function App() {
 
   // Load user gallery when needed
   useEffect(() => {
-    if (activePage === 'my-gallery' && user?.id) {
-      fetchUserGallery(1, false, user.id);
+    if (activePage === 'my-gallery' && user?.uid) {
+      fetchUserGallery(1, false, user.uid);
     }
-  }, [activePage, user?.id, fetchUserGallery]);
+  }, [activePage, user?.uid, fetchUserGallery]);
 
   // Navigate to pending page after login
   useEffect(() => {
@@ -185,10 +185,10 @@ function App() {
   }, [fetchGallery, galleryLoading, hasMore, galleryPage]);
 
   const loadMoreUserGallery = useCallback(() => {
-    if (!userGalleryLoading && userHasMore && user?.id) {
-      fetchUserGallery(userGalleryPage + 1, true, user.id);
+    if (!userGalleryLoading && userHasMore && user?.uid) {
+      fetchUserGallery(userGalleryPage + 1, true, user.uid);
     }
-  }, [fetchUserGallery, userGalleryLoading, userHasMore, userGalleryPage, user?.id]);
+  }, [fetchUserGallery, userGalleryLoading, userHasMore, userGalleryPage, user?.uid]);
 
   const verifyImage = useCallback(async (imageData) => {
     setImagePreview(imageData.preview);
@@ -217,10 +217,6 @@ function App() {
       const data = await response.json();
       setResult(data);
       setStatus('success');
-
-      if (data.is_verified) {
-        setPendingAutoSave(true);
-      }
     } catch (err) {
       console.error('Verification error:', err);
       setError(err.message || 'Failed to verify image. Please try again.');
@@ -251,12 +247,13 @@ function App() {
 
     try {
       setStatus('loading');
-      
+
+      const idToken = await getIdToken();
       const response = await fetch(`${API_URL}/api/gallery`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${idToken}`,
           'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
@@ -276,8 +273,8 @@ function App() {
       // Refresh user stats and galleries
       await refreshUser();
       await fetchGallery();
-      await fetchUserGallery(1, false, user?.id);
-      
+      await fetchUserGallery(1, false, user?.uid);
+
       setPendingAutoSave(false);
       handleReset();
     } catch (err) {
@@ -285,16 +282,17 @@ function App() {
       setError(err.message || 'Failed to save to gallery. Please try again.');
       setStatus('error');
     }
-  }, [result, imagePreview, isAuthenticated, token, refreshUser, fetchGallery, fetchUserGallery, user?.id]);
+  }, [result, imagePreview, isAuthenticated, getIdToken, refreshUser, fetchGallery, fetchUserGallery, user?.uid]);
 
   const handleDeleteFromGallery = useCallback(async (id) => {
     if (!isAuthenticated) return;
 
     try {
+      const idToken = await getIdToken();
       const response = await fetch(`${API_URL}/api/gallery/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${idToken}`,
           'ngrok-skip-browser-warning': 'true',
         },
       });
@@ -314,7 +312,7 @@ function App() {
       console.error('Delete error:', err);
       alert(err.message || 'Failed to delete image');
     }
-  }, [isAuthenticated, token, refreshUser]);
+  }, [isAuthenticated, getIdToken, refreshUser]);
 
   const handleReset = useCallback(() => {
     setMode('select');
