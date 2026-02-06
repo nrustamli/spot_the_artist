@@ -45,8 +45,10 @@ steps:
       - '--execution-environment=gen2'
       - '--max-instances=1'
       - '--set-env-vars=APP_URL=https://spot-the-artist-dkdoq6j4wa-ew.a.run.app'
-      - '--set-secrets=FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account-json:latest'
       - '--clear-volumes'
+      - '--clear-volume-mounts'
+      - '--clear-secrets'
+      - '--set-secrets=FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account-json:latest'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/spot-the-artist/app:$COMMIT_SHA'
