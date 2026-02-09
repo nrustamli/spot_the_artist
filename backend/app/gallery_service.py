@@ -146,27 +146,36 @@ def get_gallery_items(
     db = get_db()
     collection_ref = db.collection("gallery")
 
-    # Build query
-    query = collection_ref.order_by("created_at", direction=firestore.Query.DESCENDING)
+    has_filters = user_id is not None or verified_only
 
-    if user_id is not None:
-        query = query.where("user_id", "==", user_id)
+    if has_filters:
+        # When filters are applied, fetch matching docs without order_by
+        # to avoid requiring Firestore composite indexes, then sort in Python.
+        query = collection_ref
+        if user_id is not None:
+            query = query.where("user_id", "==", user_id)
+        if verified_only:
+            query = query.where("is_verified", "==", True)
 
-    if verified_only:
-        query = query.where("is_verified", "==", True)
-
-    # Get total count
-    count_query = query.count()
-    count_result = count_query.get()
-    total = count_result[0][0].value
-
-    # Paginate
-    offset = (page - 1) * per_page
-    paginated_query = query.offset(offset).limit(per_page)
-    docs = paginated_query.stream()
+        all_docs = list(query.stream())
+        # Sort by created_at descending in Python
+        all_docs.sort(
+            key=lambda d: d.to_dict().get("created_at", datetime.min),
+            reverse=True,
+        )
+        total = len(all_docs)
+        offset = (page - 1) * per_page
+        page_docs = all_docs[offset:offset + per_page]
+    else:
+        # No filters: use Firestore order_by + pagination (single-field index, auto-created)
+        query = collection_ref.order_by("created_at", direction=firestore.Query.DESCENDING)
+        count_result = query.count().get()
+        total = count_result[0][0].value
+        offset = (page - 1) * per_page
+        page_docs = list(query.offset(offset).limit(per_page).stream())
 
     items = []
-    for doc in docs:
+    for doc in page_docs:
         data = doc.to_dict()
         items.append(GalleryImageResponse(
             id=doc.id,
