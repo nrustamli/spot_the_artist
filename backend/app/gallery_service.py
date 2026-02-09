@@ -19,6 +19,11 @@ MAX_IMAGE_SIZE = 800
 # JPEG quality for compression
 JPEG_QUALITY = 70
 
+# Reward milestones: list of (faces_threshold, reward_key, label)
+REWARD_MILESTONES = [
+    {"faces": 10, "reward": "postcard", "label": "Postcard from the Artist"},
+]
+
 
 # Pydantic models
 class GalleryImageCreate(BaseModel):
@@ -45,6 +50,7 @@ class GalleryImageResponse(BaseModel):
     location: Optional[str]
     notes: Optional[str]
     created_at: datetime
+    reward_unlocked: Optional[str] = None
 
 
 class GalleryListResponse(BaseModel):
@@ -76,6 +82,16 @@ def _compress_image(base64_data: str) -> str:
     return f"data:image/jpeg;base64,{compressed}"
 
 
+def _check_reward_milestone(old_verified: int, new_verified: int) -> Optional[str]:
+    """Check if a reward milestone was crossed between old and new verified_spots."""
+    old_faces = old_verified * 1
+    new_faces = new_verified * 1
+    for milestone in REWARD_MILESTONES:
+        if old_faces < milestone["faces"] <= new_faces:
+            return milestone["reward"]
+    return None
+
+
 def save_to_gallery(user: dict, image_data: GalleryImageCreate) -> dict:
     """Save an image to the gallery."""
     db = get_db()
@@ -100,6 +116,9 @@ def save_to_gallery(user: dict, image_data: GalleryImageCreate) -> dict:
     # Add to gallery collection
     _, doc_ref = db.collection("gallery").add(doc_data)
 
+    # Read current verified_spots before incrementing
+    old_verified = user.get("verified_spots", 0)
+
     # Update user stats
     user_ref = db.collection("users").document(user["id"])
     updates = {"arts_spotted": firestore.Increment(1)}
@@ -107,7 +126,13 @@ def save_to_gallery(user: dict, image_data: GalleryImageCreate) -> dict:
         updates["verified_spots"] = firestore.Increment(1)
     user_ref.update(updates)
 
+    # Check if a reward milestone was crossed
+    reward_unlocked = None
+    if image_data.is_verified:
+        reward_unlocked = _check_reward_milestone(old_verified, old_verified + 1)
+
     doc_data["id"] = doc_ref.id
+    doc_data["reward_unlocked"] = reward_unlocked
     return doc_data
 
 

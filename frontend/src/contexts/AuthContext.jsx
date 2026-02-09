@@ -41,6 +41,8 @@ export function AuthProvider({ children }) {
           username: firebaseUser.displayName || firebaseUser.email,
           arts_spotted: profile.arts_spotted || 0,
           verified_spots: profile.verified_spots || 0,
+          faces: profile.faces || 0,
+          rewards: profile.rewards || [],
         };
       }
     } catch (err) {
@@ -54,6 +56,8 @@ export function AuthProvider({ children }) {
       username: firebaseUser.displayName || firebaseUser.email,
       arts_spotted: 0,
       verified_spots: 0,
+      faces: 0,
+      rewards: [],
     };
   }, []);
 

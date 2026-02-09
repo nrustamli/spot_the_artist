@@ -272,6 +272,7 @@ async def add_to_gallery(
         location=gallery_image.get("location"),
         notes=gallery_image.get("notes"),
         created_at=gallery_image["created_at"],
+        reward_unlocked=gallery_image.get("reward_unlocked"),
     )
 
 

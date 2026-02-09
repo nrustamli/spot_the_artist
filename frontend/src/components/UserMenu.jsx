@@ -59,6 +59,10 @@ function UserMenu({ onLoginClick, onMyGalleryClick, onExploreClick }) {
               <span className="stat-value">{user?.verified_spots || 0}</span>
               <span className="stat-label">Verified</span>
             </div>
+            <div className="stat-item">
+              <span className="stat-value">{user?.faces || 0}</span>
+              <span className="stat-label">Faces</span>
+            </div>
           </div>
 
           <div className="dropdown-divider"></div>

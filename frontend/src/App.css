@@ -307,6 +307,181 @@
   }
 }
 
+/* Celebration overlay */
+.celebration-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+  padding: 1rem;
+}
+
+.celebration-modal {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 2rem 1.5rem;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  position: relative;
+  animation: scaleIn 0.4s ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.celebration-sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.celebration-sparkles span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  animation: sparkle 1.5s ease infinite;
+}
+
+.celebration-sparkles span:nth-child(1) {
+  top: 10%;
+  left: 15%;
+  animation-delay: 0s;
+}
+
+.celebration-sparkles span:nth-child(2) {
+  top: 15%;
+  right: 12%;
+  animation-delay: 0.3s;
+  background: var(--border-orange);
+}
+
+.celebration-sparkles span:nth-child(3) {
+  bottom: 20%;
+  left: 10%;
+  animation-delay: 0.6s;
+  background: var(--border-pink);
+}
+
+.celebration-sparkles span:nth-child(4) {
+  bottom: 15%;
+  right: 15%;
+  animation-delay: 0.9s;
+  background: var(--border-yellow);
+}
+
+.celebration-icon {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+}
+
+.celebration-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.celebration-message {
+  margin: 0 0 1rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.celebration-reward {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(229, 57, 53, 0.08);
+  border: 1px solid rgba(229, 57, 53, 0.2);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.celebration-reward-icon {
+  font-size: 1.25rem;
+}
+
+.celebration-reward-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--accent-red);
+}
+
+.celebration-cta {
+  margin: 0 0 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.celebration-button {
+  width: 100%;
+  padding: 0.85rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent-red);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  font-family: inherit;
+  margin-bottom: 0.5rem;
+}
+
+.celebration-button:hover {
+  opacity: 0.9;
+}
+
+.celebration-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  font-family: inherit;
+}
+
+.celebration-dismiss:hover {
+  color: var(--text-secondary);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* Responsive */
 @media (max-width: 380px) {
   .mode-buttons {

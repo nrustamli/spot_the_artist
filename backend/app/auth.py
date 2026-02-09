@@ -17,6 +17,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
 from .database import get_db
+from .gallery_service import REWARD_MILESTONES
 
 # Initialize Firebase Admin SDK
 # Priority: 1) FIREBASE_SERVICE_ACCOUNT_JSON env var (inline JSON, for Cloud Run)
@@ -50,6 +51,8 @@ class UserResponse(BaseModel):
     email: str
     arts_spotted: int
     verified_spots: int
+    faces: int
+    rewards: list[str]
     created_at: datetime
 
 
@@ -69,6 +72,17 @@ def verify_firebase_token(token: str) -> dict:
         return None
 
 
+def _enrich_user(data: dict) -> dict:
+    """Add computed faces and rewards fields to a user dict."""
+    verified = data.get("verified_spots", 0)
+    faces = verified * 1
+    data["faces"] = faces
+    data["rewards"] = [
+        m["reward"] for m in REWARD_MILESTONES if faces >= m["faces"]
+    ]
+    return data
+
+
 def get_or_create_user(uid: str, email: str, username: str) -> dict:
     """Look up a user by Firebase UID, creating a new record if needed."""
     db = get_db()
@@ -78,7 +92,7 @@ def get_or_create_user(uid: str, email: str, username: str) -> dict:
     if user_doc.exists:
         data = user_doc.to_dict()
         data["id"] = uid
-        return data
+        return _enrich_user(data)
 
     # Create new user document
     now = datetime.utcnow()
@@ -92,7 +106,7 @@ def get_or_create_user(uid: str, email: str, username: str) -> dict:
     user_ref.set(user_data)
 
     user_data["id"] = uid
-    return user_data
+    return _enrich_user(user_data)
 
 
 async def get_current_user(

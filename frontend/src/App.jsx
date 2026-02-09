@@ -7,6 +7,7 @@ import VerificationResult from './components/VerificationResult';
 import LoadingSpinner from './components/LoadingSpinner';
 import Gallery from './components/Gallery';
 import AuthModal from './components/AuthModal';
+import MyRewards from './components/MyRewards';
 import './App.css';
 
 // API base URL - in production (same origin), use empty string
@@ -43,6 +44,9 @@ function App() {
   // Auth modal state
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
+
+  // Reward celebration state
+  const [rewardCelebration, setRewardCelebration] = useState(null);
 
   const buildGalleryUrl = (page, userId) => {
     const params = new URLSearchParams({
@@ -270,10 +274,17 @@ function App() {
         throw new Error(errorData.detail || 'Failed to save to gallery');
       }
 
+      const savedData = await response.json();
+
       // Refresh user stats and galleries
       await refreshUser();
       await fetchGallery();
       await fetchUserGallery(1, false, user?.uid);
+
+      // Check if a reward was unlocked
+      if (savedData.reward_unlocked) {
+        setRewardCelebration(savedData.reward_unlocked);
+      }
 
       setPendingAutoSave(false);
       handleReset();
@@ -369,6 +380,8 @@ function App() {
             <div className="page-title">My Gallery</div>
             <p className="page-subtitle">Only the artworks you spotted</p>
           </div>
+
+          <MyRewards />
 
           <Gallery
             items={userGalleryItems}
@@ -524,6 +537,43 @@ function App() {
         onClose={() => setShowAuthModal(false)}
         initialMode={authModalMode}
       />
+
+      {rewardCelebration && (
+        <div className="celebration-overlay" onClick={() => setRewardCelebration(null)}>
+          <div className="celebration-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="celebration-sparkles">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <div className="celebration-icon">🎉</div>
+            <h2 className="celebration-title">Congratulations!</h2>
+            <p className="celebration-message">
+              You've earned <strong>10 faces</strong> and unlocked a reward!
+            </p>
+            <div className="celebration-reward">
+              <span className="celebration-reward-icon">💌</span>
+              <span className="celebration-reward-text">Postcard from the Artist</span>
+            </div>
+            <p className="celebration-cta">
+              Check your rewards in My Gallery to learn more.
+            </p>
+            <button
+              className="celebration-button"
+              onClick={() => {
+                setRewardCelebration(null);
+                setActivePage('my-gallery');
+              }}
+            >
+              View My Rewards
+            </button>
+            <button
+              className="celebration-dismiss"
+              onClick={() => setRewardCelebration(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
