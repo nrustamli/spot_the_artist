@@ -19,7 +19,7 @@ No app install required — it's a mobile-first web app that works from any brow
 
 
 ## How It Works
-
+```
 ┌─────────────────────────────────────────────────────┐
 │  Browser (React SPA)                                │
 │  Firebase SDK handles sign-in                       │
@@ -33,7 +33,7 @@ No app install required — it's a mobile-first web app that works from any brow
 │  CLIP verification against reference images         │
 │  Gallery CRUD → Cloud Firestore                     │
 └─────────────────────────────────────────────────────┘
-
+```
 **Verification flow:**
 
 1. User uploads or captures a photo
@@ -52,7 +52,7 @@ No app install required — it's a mobile-first web app that works from any brow
 + Deployment: Google Cloud Run via Cloud Build 
 
 ## Project Structure
-
+```
 spot_the_artist/
 ├── frontend/
 │   └── src/
@@ -80,7 +80,7 @@ spot_the_artist/
 ├── cloudbuild.yaml                  # GCP Cloud Build config
 └── .github/workflows/
     └── deploy-cloud-run.yml         # CI/CD: push to main → deploy
-
+```
 ## Deployment
 
 The app deploys automatically to **Google Cloud Run** on every push to `main`.
