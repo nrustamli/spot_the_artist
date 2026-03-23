@@ -51,3 +51,9 @@ api-key-sg
 *service-account*.json
 
 ARCHITECTURE.md
+
+blog_post.md
+Spot_the_artist_blog_post.md
+*.HEIC
+backend/data/
+ARCHITECTURE.md
